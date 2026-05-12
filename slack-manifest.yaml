@@ -1,7 +1,17 @@
+_metadata:
+  major_version: 2
+  minor_version: 1
+
 display_information:
   name: Unico Poll
-  description: Internal 3-phase polling app for Slack
+  description: Internal 3-phase channel polls for your workspace.
+  long_description: >
+    Unico Poll runs structured polls in Slack: a suggestion phase to collect ideas,
+    a voting phase with classic single-vote or 1-5 ratings without showing live tallies,
+    and a results phase where the poll creator reviews outcomes before publishing to the channel.
+    Optional run-off helps resolve very close results. Configure tokens locally via .env and run with Socket Mode.
   background_color: "#2f2f2f"
+
 features:
   bot_user:
     display_name: Unico Poll
@@ -11,6 +21,7 @@ features:
       description: Start a 3-phase Unico poll
       usage_hint: "Poll Title | 48h"
       should_escape: false
+
 oauth_config:
   scopes:
     bot:
@@ -21,6 +32,7 @@ oauth_config:
       - groups:history
       - im:history
       - mpim:history
+
 settings:
   event_subscriptions:
     bot_events:
