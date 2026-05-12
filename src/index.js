@@ -1,6 +1,6 @@
 const { App } = require("@slack/bolt");
 const env = require("./config/env");
-require("./db/sqlite");
+require("./db/store").getState();
 const { registerCommands } = require("./slack/commands");
 const { registerActions } = require("./slack/actions");
 const { registerScheduler } = require("./services/scheduler");

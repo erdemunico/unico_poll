@@ -1,4 +1,4 @@
-# Unico Poll (Slack Bolt + Node.js + SQLite)
+# Unico Poll (Slack Bolt + Node.js + JSON store)
 
 Unico Poll, 3 asamali bir Slack anket uygulamasidir:
 - Suggestion Phase
@@ -18,8 +18,7 @@ unico-poll/
   src/
     index.js
     config/env.js
-    db/migrations.js
-    db/sqlite.js
+    db/store.js
     services/pollService.js
     services/scheduler.js
     slack/actions.js
@@ -55,6 +54,8 @@ SUGGESTION_RATE_LIMIT_COUNT=5
 SUGGESTION_RATE_LIMIT_WINDOW_MINUTES=1
 ```
 
+Not: `DATABASE_PATH` `.db` ile biterse veri otomatik olarak ayni konumda `unico-poll.json` dosyasina yazilir (Windows'ta derleme gerektirmez). Istersen dogrudan `./data/unico-poll.json` da kullanabilirsin.
+
 Calistirma:
 
 ```bash
@@ -86,14 +87,15 @@ Oneri spam korumasi icin:
 - Ankette sadece `Oneri Ismi` gorunur.
 - `:` ve `;` sonrasi alanlar sadece log/PM takibi icin saklanir.
 
-## 4) Veri modeli
+## 4) Veri modeli (tek JSON dosyasi)
+
+`data/unico-poll.json` icinde koleksiyonlar:
 
 - `polls`: anket temel bilgileri ve faz/sure alanlari
 - `suggestions`: ham yazi + gorunen isim + pm keyword + extra
 - `poll_shortlist`: ankete girecek secenekler (max 10)
 - `votes_classic`: klasik oylar
 - `votes_rating`: 1-5 puanlar
-- `poll_events`: audit/log (genisletmeye hazir)
 
 ## 5) Slack app gerekli izinleri
 
@@ -106,7 +108,7 @@ Oneri spam korumasi icin:
 ```bash
 cd "C:\Users\erdem\Downloads\fur agent"
 git add unico-poll
-git commit -m "Add Unico Poll Slack Bolt app with SQLite state and run-off flow"
+git commit -m "Add Unico Poll Slack Bolt app with JSON state and run-off flow"
 git branch -M main
 git remote add origin https://github.com/<YOUR_USERNAME>/<YOUR_REPO>.git
 git push -u origin main

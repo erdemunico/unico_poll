@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require("uuid");
-const db = require("../db/sqlite");
+const { getState, persist } = require("../db/store");
 const { addHoursIso, addMinutesIso, nowIso, isPastIso } = require("../utils/time");
 const env = require("../config/env");
 
@@ -13,107 +13,113 @@ function resolveDeadlineFromHours(hours) {
 }
 
 function createPoll({ channelId, creatorId, title, suggestionHours }) {
+  const state = getState();
   const id = uuidv4();
   const createdAt = nowIso();
   const suggestionDeadline = resolveDeadlineFromHours(suggestionHours || env.defaultSuggestionHours);
 
-  db.prepare(`
-    INSERT INTO polls (
-      id, channel_id, creator_id, title, phase, vote_mode, is_open_vote,
-      suggestion_deadline_at, created_at, updated_at
-    ) VALUES (
-      @id, @channel_id, @creator_id, @title, 'suggestion', 'classic', 0,
-      @suggestion_deadline_at, @created_at, @updated_at
-    )
-  `).run({
+  state.polls.push({
     id,
     channel_id: channelId,
     creator_id: creatorId,
     title: title || "Unico Poll",
+    phase: "suggestion",
+    vote_mode: "classic",
+    is_open_vote: 0,
     suggestion_deadline_at: suggestionDeadline,
+    voting_deadline_at: null,
     created_at: createdAt,
     updated_at: createdAt,
   });
-
+  persist();
   return getPollById(id);
 }
 
 function getPollById(pollId) {
-  return db.prepare("SELECT * FROM polls WHERE id = ?").get(pollId);
+  const state = getState();
+  return state.polls.find((p) => p.id === pollId) || null;
 }
 
 function getActivePollInChannel(channelId) {
-  return db
-    .prepare("SELECT * FROM polls WHERE channel_id = ? AND phase != 'closed' ORDER BY created_at DESC LIMIT 1")
-    .get(channelId);
+  const state = getState();
+  const open = state.polls
+    .filter((p) => p.channel_id === channelId && p.phase !== "closed")
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return open[0] || null;
 }
 
 function addSuggestion({ pollId, userId, parsed }) {
+  const state = getState();
   const poll = getPollById(pollId);
   if (!poll || poll.phase !== "suggestion" || isPastIso(poll.suggestion_deadline_at)) {
     return { ok: false, reason: "Suggestion phase is closed." };
   }
 
-  const exists = db
-    .prepare("SELECT id FROM suggestions WHERE poll_id = ? AND lower(display_name) = lower(?)")
-    .get(pollId, parsed.displayName);
+  const exists = state.suggestions.some(
+    (s) => s.poll_id === pollId && s.display_name.toLowerCase() === parsed.displayName.toLowerCase()
+  );
   if (exists) {
     return { ok: false, reason: "This suggestion already exists." };
   }
 
   const id = uuidv4();
-  db.prepare(`
-    INSERT INTO suggestions (
-      id, poll_id, submitted_by, raw_text, display_name, pm_keyword, extra, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, pollId, userId, parsed.rawText, parsed.displayName, parsed.pmKeyword, parsed.extra, nowIso());
-
+  state.suggestions.push({
+    id,
+    poll_id: pollId,
+    submitted_by: userId,
+    raw_text: parsed.rawText,
+    display_name: parsed.displayName,
+    pm_keyword: parsed.pmKeyword,
+    extra: parsed.extra,
+    created_at: nowIso(),
+  });
+  persist();
   return { ok: true, suggestionId: id };
 }
 
 function getUserSuggestionCountSince({ pollId, userId, sinceIso }) {
-  return db
-    .prepare(
-      "SELECT COUNT(1) AS count FROM suggestions WHERE poll_id = ? AND submitted_by = ? AND created_at >= ?"
-    )
-    .get(pollId, userId, sinceIso).count;
+  const state = getState();
+  const since = new Date(sinceIso).getTime();
+  return state.suggestions.filter((s) => {
+    if (s.poll_id !== pollId || s.submitted_by !== userId) {
+      return false;
+    }
+    return new Date(s.created_at).getTime() >= since;
+  }).length;
 }
 
 function listSuggestions(pollId) {
-  return db
-    .prepare("SELECT * FROM suggestions WHERE poll_id = ? ORDER BY created_at ASC")
-    .all(pollId);
+  const state = getState();
+  return state.suggestions
+    .filter((s) => s.poll_id === pollId)
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 }
 
 function saveShortlist({ pollId, suggestionIds }) {
+  const state = getState();
   const cleanIds = [...new Set(suggestionIds)].slice(0, MAX_OPTIONS);
-  const tx = db.transaction(() => {
-    db.prepare("DELETE FROM poll_shortlist WHERE poll_id = ?").run(pollId);
-    const stmt = db.prepare("INSERT INTO poll_shortlist (poll_id, suggestion_id) VALUES (?, ?)");
-    for (const suggestionId of cleanIds) {
-      stmt.run(pollId, suggestionId);
-    }
-  });
-  tx();
+  state.poll_shortlist = state.poll_shortlist.filter((row) => row.poll_id !== pollId);
+  for (const suggestionId of cleanIds) {
+    state.poll_shortlist.push({ poll_id: pollId, suggestion_id: suggestionId });
+  }
+  persist();
   return cleanIds;
 }
 
 function getShortlistedSuggestions(pollId) {
-  const selected = db.prepare(`
-    SELECT s.*
-    FROM suggestions s
-    INNER JOIN poll_shortlist ps ON s.id = ps.suggestion_id
-    WHERE ps.poll_id = ?
-    ORDER BY s.created_at ASC
-  `).all(pollId);
-
-  if (selected.length > 0) {
-    return selected;
+  const state = getState();
+  const shortlistRows = state.poll_shortlist.filter((ps) => ps.poll_id === pollId);
+  if (shortlistRows.length > 0) {
+    const idSet = new Set(shortlistRows.map((ps) => ps.suggestion_id));
+    return state.suggestions
+      .filter((s) => s.poll_id === pollId && idSet.has(s.id))
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   }
   return listSuggestions(pollId).slice(0, MAX_OPTIONS);
 }
 
 function startVoting({ pollId, voteMode, isOpenVote, votingHours }) {
+  const state = getState();
   const poll = getPollById(pollId);
   if (!poll || !["suggestion", "ready_for_voting"].includes(poll.phase)) {
     throw new Error("Poll is not in suggestion phase.");
@@ -123,48 +129,63 @@ function startVoting({ pollId, voteMode, isOpenVote, votingHours }) {
     throw new Error("At least 2 suggestions are required to start voting.");
   }
 
-  db.prepare(`
-    UPDATE polls
-    SET phase = 'voting',
-        vote_mode = ?,
-        is_open_vote = ?,
-        voting_deadline_at = ?,
-        updated_at = ?
-    WHERE id = ?
-  `).run(voteMode, isOpenVote ? 1 : 0, resolveDeadlineFromHours(votingHours || env.defaultVotingHours), nowIso(), pollId);
-
+  const idx = state.polls.findIndex((p) => p.id === pollId);
+  if (idx === -1) {
+    throw new Error("Poll not found.");
+  }
+  state.polls[idx] = {
+    ...state.polls[idx],
+    phase: "voting",
+    vote_mode: voteMode,
+    is_open_vote: isOpenVote ? 1 : 0,
+    voting_deadline_at: resolveDeadlineFromHours(votingHours || env.defaultVotingHours),
+    updated_at: nowIso(),
+  };
+  persist();
   return getPollById(pollId);
 }
 
 function markSuggestionClosed(pollId) {
-  db.prepare(`
-    UPDATE polls
-    SET phase = 'ready_for_voting',
-        updated_at = ?
-    WHERE id = ? AND phase = 'suggestion'
-  `).run(nowIso(), pollId);
+  const state = getState();
+  const idx = state.polls.findIndex((p) => p.id === pollId && p.phase === "suggestion");
+  if (idx !== -1) {
+    state.polls[idx] = {
+      ...state.polls[idx],
+      phase: "ready_for_voting",
+      updated_at: nowIso(),
+    };
+    persist();
+  }
   return getPollById(pollId);
 }
 
 function castClassicVote({ pollId, userId, suggestionId }) {
+  const state = getState();
   const poll = getPollById(pollId);
   if (!poll || poll.phase !== "voting" || poll.vote_mode !== "classic" || isPastIso(poll.voting_deadline_at)) {
     return { ok: false, reason: "Classic voting is closed." };
   }
 
-  const id = uuidv4();
-  db.prepare(`
-    INSERT INTO votes_classic (id, poll_id, suggestion_id, user_id, created_at)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT (poll_id, user_id) DO UPDATE SET
-      suggestion_id = excluded.suggestion_id,
-      created_at = excluded.created_at
-  `).run(id, pollId, suggestionId, userId, nowIso());
-
+  const existing = state.votes_classic.find((v) => v.poll_id === pollId && v.user_id === userId);
+  const ts = nowIso();
+  if (existing) {
+    existing.suggestion_id = suggestionId;
+    existing.created_at = ts;
+  } else {
+    state.votes_classic.push({
+      id: uuidv4(),
+      poll_id: pollId,
+      suggestion_id: suggestionId,
+      user_id: userId,
+      created_at: ts,
+    });
+  }
+  persist();
   return { ok: true };
 }
 
 function castRatingVote({ pollId, userId, suggestionId, rating }) {
+  const state = getState();
   const poll = getPollById(pollId);
   if (!poll || poll.phase !== "voting" || poll.vote_mode !== "rating" || isPastIso(poll.voting_deadline_at)) {
     return { ok: false, reason: "Rating voting is closed." };
@@ -175,69 +196,95 @@ function castRatingVote({ pollId, userId, suggestionId, rating }) {
     return { ok: false, reason: "Rating must be between 1 and 5." };
   }
 
-  const id = uuidv4();
-  db.prepare(`
-    INSERT INTO votes_rating (id, poll_id, suggestion_id, user_id, rating, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT (poll_id, suggestion_id, user_id) DO UPDATE SET
-      rating = excluded.rating,
-      created_at = excluded.created_at
-  `).run(id, pollId, suggestionId, userId, score, nowIso());
-
+  const existing = state.votes_rating.find(
+    (v) => v.poll_id === pollId && v.suggestion_id === suggestionId && v.user_id === userId
+  );
+  const ts = nowIso();
+  if (existing) {
+    existing.rating = score;
+    existing.created_at = ts;
+  } else {
+    state.votes_rating.push({
+      id: uuidv4(),
+      poll_id: pollId,
+      suggestion_id: suggestionId,
+      user_id: userId,
+      rating: score,
+      created_at: ts,
+    });
+  }
+  persist();
   return { ok: true };
 }
 
 function closePoll(pollId) {
-  db.prepare("UPDATE polls SET phase = 'closed', updated_at = ? WHERE id = ?").run(nowIso(), pollId);
+  const state = getState();
+  const idx = state.polls.findIndex((p) => p.id === pollId);
+  if (idx !== -1) {
+    state.polls[idx] = {
+      ...state.polls[idx],
+      phase: "closed",
+      updated_at: nowIso(),
+    };
+    persist();
+  }
   return getPollById(pollId);
 }
 
 function getExpiredSuggestionPolls() {
-  return db.prepare(`
-    SELECT * FROM polls
-    WHERE phase = 'suggestion' AND suggestion_deadline_at IS NOT NULL AND suggestion_deadline_at <= ?
-  `).all(nowIso());
+  const state = getState();
+  const now = nowIso();
+  return state.polls.filter(
+    (p) => p.phase === "suggestion" && p.suggestion_deadline_at && p.suggestion_deadline_at <= now
+  );
 }
 
 function getExpiredVotingPolls() {
-  return db.prepare(`
-    SELECT * FROM polls
-    WHERE phase = 'voting' AND voting_deadline_at IS NOT NULL AND voting_deadline_at <= ?
-  `).all(nowIso());
+  const state = getState();
+  const now = nowIso();
+  return state.polls.filter(
+    (p) => p.phase === "voting" && p.voting_deadline_at && p.voting_deadline_at <= now
+  );
 }
 
 function buildResults(pollId) {
+  const state = getState();
   const poll = getPollById(pollId);
-  const suggestions = getShortlistedSuggestions(pollId);
   if (!poll) {
     return null;
   }
+  const shortlist = getShortlistedSuggestions(pollId);
 
   let rows = [];
   if (poll.vote_mode === "classic") {
-    rows = db.prepare(`
-      SELECT s.id, s.display_name, s.pm_keyword, s.extra, COUNT(vc.id) AS score
-      FROM suggestions s
-      LEFT JOIN votes_classic vc ON vc.suggestion_id = s.id AND vc.poll_id = ?
-      LEFT JOIN poll_shortlist ps ON ps.suggestion_id = s.id AND ps.poll_id = ?
-      WHERE s.poll_id = ? AND (ps.suggestion_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM poll_shortlist WHERE poll_id = ?))
-      GROUP BY s.id
-      ORDER BY score DESC, s.display_name ASC
-    `).all(pollId, pollId, pollId, pollId);
+    rows = shortlist.map((s) => {
+      const score = state.votes_classic.filter((v) => v.poll_id === pollId && v.suggestion_id === s.id).length;
+      return {
+        id: s.id,
+        display_name: s.display_name,
+        pm_keyword: s.pm_keyword,
+        extra: s.extra,
+        score,
+      };
+    });
   } else {
-    rows = db.prepare(`
-      SELECT s.id, s.display_name, s.pm_keyword, s.extra, COALESCE(ROUND(AVG(vr.rating), 2), 0) AS score
-      FROM suggestions s
-      LEFT JOIN votes_rating vr ON vr.suggestion_id = s.id AND vr.poll_id = ?
-      LEFT JOIN poll_shortlist ps ON ps.suggestion_id = s.id AND ps.poll_id = ?
-      WHERE s.poll_id = ? AND (ps.suggestion_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM poll_shortlist WHERE poll_id = ?))
-      GROUP BY s.id
-      ORDER BY score DESC, s.display_name ASC
-    `).all(pollId, pollId, pollId, pollId);
+    rows = shortlist.map((s) => {
+      const ratings = state.votes_rating
+        .filter((v) => v.poll_id === pollId && v.suggestion_id === s.id)
+        .map((v) => v.rating);
+      const avg = ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 100) / 100 : 0;
+      return {
+        id: s.id,
+        display_name: s.display_name,
+        pm_keyword: s.pm_keyword,
+        extra: s.extra,
+        score: avg,
+      };
+    });
   }
 
-  const filteredRows = rows.filter((row) => suggestions.some((s) => s.id === row.id));
-  return { poll, results: filteredRows };
+  rows.sort((a, b) => b.score - a.score || a.display_name.localeCompare(b.display_name));
+  return { poll, results: rows };
 }
 
 function isCloseResult(results) {
