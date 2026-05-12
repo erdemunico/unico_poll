@@ -26,6 +26,7 @@ unico-poll/
     slack/commands.js
     utils/parser.js
     utils/time.js
+    utils/logger.js
 ```
 
 ## 2) package.json ve kurulum komutlari
