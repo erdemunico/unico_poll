@@ -1,7 +1,19 @@
 const path = require("path");
 const dotenv = require("dotenv");
 
-dotenv.config();
+function trimSecret(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  let s = String(value).trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
+const projectRoot = path.resolve(__dirname, "..", "..");
+dotenv.config({ path: path.join(projectRoot, ".env") });
 
 const toInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
@@ -10,10 +22,10 @@ const toInt = (value, fallback) => {
 
 const env = {
   port: toInt(process.env.PORT, 3000),
-  slackBotToken: process.env.SLACK_BOT_TOKEN,
-  slackSigningSecret: process.env.SLACK_SIGNING_SECRET,
-  slackAppToken: process.env.SLACK_APP_TOKEN,
-  databasePath: path.resolve(process.cwd(), process.env.DATABASE_PATH || "./data/unico-poll.db"),
+  slackBotToken: trimSecret(process.env.SLACK_BOT_TOKEN),
+  slackSigningSecret: trimSecret(process.env.SLACK_SIGNING_SECRET),
+  slackAppToken: trimSecret(process.env.SLACK_APP_TOKEN),
+  databasePath: path.resolve(projectRoot, trimSecret(process.env.DATABASE_PATH) || "./data/unico-poll.db"),
   defaultSuggestionHours: toInt(process.env.DEFAULT_SUGGESTION_HOURS, 48),
   defaultVotingHours: toInt(process.env.DEFAULT_VOTING_HOURS, 48),
   defaultRunoffHours: toInt(process.env.DEFAULT_RUNOFF_HOURS, 24),
