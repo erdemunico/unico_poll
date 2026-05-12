@@ -1,3 +1,4 @@
+const fs = require("fs");
 const path = require("path");
 const dotenv = require("dotenv");
 
@@ -13,7 +14,58 @@ function trimSecret(value) {
 }
 
 const projectRoot = path.resolve(__dirname, "..", "..");
-dotenv.config({ path: path.join(projectRoot, ".env") });
+
+function stripBom(text) {
+  if (!text) {
+    return text;
+  }
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+function applyParsedEnv(parsed) {
+  if (!parsed) {
+    return;
+  }
+  for (const [key, value] of Object.entries(parsed)) {
+    const cleanKey = key.replace(/^\ufeff/, "").trim();
+    if (cleanKey) {
+      process.env[cleanKey] = value;
+    }
+  }
+}
+
+function loadEnvFromFile(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+  const raw = stripBom(fs.readFileSync(filePath, "utf8"));
+  const parsed = dotenv.parse(raw);
+  applyParsedEnv(parsed);
+  return true;
+}
+
+const envPaths = [
+  path.join(projectRoot, ".env"),
+  path.join(process.cwd(), ".env"),
+];
+let loadedEnvPath = null;
+for (const candidate of envPaths) {
+  if (loadEnvFromFile(candidate)) {
+    loadedEnvPath = candidate;
+    break;
+  }
+}
+if (!loadedEnvPath) {
+  dotenv.config();
+}
+
+if (String(process.env.UNICO_DEBUG_ENV || "").toLowerCase() === "true") {
+  // eslint-disable-next-line no-console
+  console.log(
+    `[env] projectRoot=${projectRoot} cwd=${process.cwd()} loadedFrom=${loadedEnvPath || "(none)"} ` +
+      `botLen=${trimSecret(process.env.SLACK_BOT_TOKEN).length} appLen=${trimSecret(process.env.SLACK_APP_TOKEN).length}`
+  );
+}
 
 const toInt = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
