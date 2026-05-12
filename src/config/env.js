@@ -29,7 +29,8 @@ function applyParsedEnv(parsed) {
   for (const [key, value] of Object.entries(parsed)) {
     const cleanKey = key.replace(/^\ufeff/, "").trim();
     if (cleanKey) {
-      process.env[cleanKey] = value;
+      // Always override existing process.env so stale OS-level vars cannot win.
+      process.env[cleanKey] = value == null ? "" : String(value);
     }
   }
 }
