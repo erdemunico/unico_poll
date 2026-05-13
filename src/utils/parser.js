@@ -43,8 +43,23 @@ function parseHoursArg(text, fallbackHours) {
   return hours;
 }
 
+/** True if options string requests skipping channel suggestion collection (direct ballot). */
+function parseSkipChannelSuggestions(optionsRaw) {
+  return /\b(onersiz|direkt|no-suggestions|kanalsiz)\b/i.test(String(optionsRaw || ""));
+}
+
+/** Strip skip-mode keywords so hour parsing still works (e.g. "48h direkt" -> "48h"). */
+function stripSkipChannelKeywords(optionsRaw) {
+  return String(optionsRaw || "")
+    .replace(/\b(onersiz|direkt|no-suggestions|kanalsiz)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 module.exports = {
   MAX_DISPLAY_NAME_LENGTH,
   parseSuggestionInput,
   parseHoursArg,
+  parseSkipChannelSuggestions,
+  stripSkipChannelKeywords,
 };

@@ -88,7 +88,7 @@ const env = {
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean),
-  suggestionRateLimitCount: toInt(process.env.SUGGESTION_RATE_LIMIT_COUNT, 5),
+  suggestionRateLimitCount: toInt(process.env.SUGGESTION_RATE_LIMIT_COUNT, 0),
   suggestionRateLimitWindowMinutes: toInt(process.env.SUGGESTION_RATE_LIMIT_WINDOW_MINUTES, 1),
 };
 

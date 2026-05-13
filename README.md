@@ -1,9 +1,16 @@
 # Unico Poll (Slack Bolt + Node.js + JSON store)
 
-Unico Poll, 3 asamali bir Slack anket uygulamasidir:
-- Suggestion Phase
-- Voting Phase
-- Results & Run-off
+Unico Poll, Slack uzerinde **oneri toplama** ve **oylamayi** ayiran bir akistir:
+- **1. asama (istege bagli):** Kanalda serbest metinle oneri toplanir; `direkt` / `onersiz` ile bu adim atlanip secenekler yalniz yonetici tarafindan girilir.
+- **2. asama:** Anketi acan kullanici hangi onerilerin oylamaya girecegini secer (kanal oneri modunda); direkt modda bu adim modal ile birlestirilir.
+- **3. asama:** Oylama ve sonuclar; gerekirse run-off.
+
+Kanal mesajinda gorunen **baslik**, `/unico-poll` komutunda `|` karakterinden once yazdigin metindir. Ornek: `/unico-poll Test | 1h` → baslik *Test*.
+
+## Oylama turu ve acik oy
+
+- **Klasik (tek oy):** Katilimci tek secenek secer. Istersen *acik oy* secilebilir: oy veren kisi kanalda kisa bir bildirimle gorunur (spam riski dusuk).
+- **Puanlama (1-5):** Her secenek ayri puanlanir; **acik oy secenegi yoktur** — oy her zaman kapalidir. Kanala secenek basina puan dokulmesi pratik olmadigi icin bu modda acik oy desteklenmez.
 
 ## 1) Project Structure
 
@@ -13,6 +20,7 @@ unico-poll/
   .gitignore
   package.json
   README.md
+  PM_KOMUTLAR.md
   data/
     .gitkeep
   src/
@@ -32,12 +40,12 @@ unico-poll/
 ## 2) package.json ve kurulum komutlari
 
 ```bash
-cd "C:\Users\erdem\Downloads\fur agent\unico-poll"
+cd unico-poll
 npm install
 copy .env.example .env
 ```
 
-`.env` dosyasini doldurun:
+`.env` dosyasini doldurun (anket acanlar icin asgari alanlar):
 
 ```env
 SLACK_BOT_TOKEN=xoxb-your-bot-token
@@ -50,7 +58,6 @@ DEFAULT_VOTING_HOURS=48
 DEFAULT_RUNOFF_HOURS=24
 FAST_TEST_MODE=false
 FAST_TEST_MINUTES=5
-ALLOWED_CREATOR_IDS=
 SUGGESTION_RATE_LIMIT_COUNT=5
 SUGGESTION_RATE_LIMIT_WINDOW_MINUTES=1
 ```
@@ -70,23 +77,36 @@ FAST_TEST_MODE=true
 FAST_TEST_MINUTES=5
 ```
 
-Bu mod aktifken suggestion/voting/run-off sureleri saat yerine belirtilen dakika ile otomatik ayarlanir.
-
-`ALLOWED_CREATOR_IDS` doldurulursa (ornegin `U123,U456`) sadece bu kullanicilar `/unico-poll` komutunu calistirabilir.
+Bu mod aktifken suggestion/voting/run-off sureleri saat yerine belirtilen dakika ile otomatik ayarlanir. **Canliya cikarken** `.env` icinde `FAST_TEST_MODE=false` yap ve botu yeniden baslat.
 
 Oneri spam korumasi icin:
 - `SUGGESTION_RATE_LIMIT_COUNT`: pencere icindeki max oneriler
 - `SUGGESTION_RATE_LIMIT_WINDOW_MINUTES`: pencere suresi (dakika)
 
+### Workspace yoneticileri (opsiyonel kisit)
+
+`/unico-poll` komutunu **sadece belirli Slack kullanicilarina** acmak istersen `.env` icinde:
+
+```env
+ALLOWED_CREATOR_IDS=U12345678,U87654321
+```
+
+Bos birakilir: kanal uyeleri (Slack uygulama izinlerine gore) komutu kullanabilir. Bu ayar **poll acanlari** degil, **workspace / bot yonetimini** ilgilendirir; komut ozeti icin `PM_KOMUTLAR.md` dosyasina bakman yeterli.
+
 ## 3) Slash command kullanimi
 
 ```text
 /unico-poll Turnuva Ismi | 48h
+/unico-poll Turnuva Ismi | direkt
 ```
 
-- Oneri formati: `Oneri Ismi : PM Keyword ; Ekstra`
-- Ankette sadece `Oneri Ismi` gorunur.
-- `:` ve `;` sonrasi alanlar sadece log/PM takibi icin saklanir.
+- `|` oncesi metin kanalda gorunen **baslik**dir.
+- Kanal oneri modunda: `|` sonrasi `48h` gibi ifade oneri toplama suresidir (varsayilan `.env` de kullanilabilir).
+- **Onerisiz / direkt:** `|` sonrasina `direkt`, `onersiz`, `kanalsiz` veya `no-suggestions` yazarsan kanalda oneri toplanmaz. Kanal uyeleri oylama mesajini **gormeden once** yonetici secenekleri girer: komut cevabinda (yalnizca sana gorunen) *Secenekleri gir* dugmesi gelir; ayrica bota **DM** (tercih) ve DM acilmazsa kanalda yalnizca seni etiketleyen yedek mesaj kullanilabilir. Oylama baslayinca `<!channel>` ile kanal duyurusu normal sekilde yapilir. Ornek: `/unico-poll Lig maci | direkt`. `48h direkt` gibi yazsan bile direkt modda oneri suresi kullanilmaz.
+- Katilimcilar kanala **tek satir** mesaj yazarak oneri verir; `:` yoksa tum satir oylamaya *cikarilabilecek* aday olarak kaydedilir.
+- Istege bagli ayrintili format: `Oneri Ismi : PM kodu ; not` — oylamada gorunen kisim `:` oncesidir; sonrasi sadece kayit icindir.
+- Aktif anketi **yalnizca baslatan** kapatabilir: `/unico-poll iptal` veya `/unico-poll cancel` (`|` kullanma).
+- Oneri suresi bitince **2'den az** oneri varsa anket otomatik kapanir; kanal blokta kalmaz.
 
 ## 4) Veri modeli (tek JSON dosyasi)
 
@@ -100,17 +120,17 @@ Oneri spam korumasi icin:
 
 ## 5) Slack app gerekli izinleri
 
-- OAuth scopes: `commands`, `chat:write`, `chat:write.public`, `channels:history`, `groups:history`, `im:history`, `mpim:history`
+- OAuth scopes: `commands`, `chat:write`, `chat:write.public`, `channels:history`, `groups:history`, `im:history`, `im:write`, `mpim:history` (`im:write` direkt modda kurulum icin bota DM acmak icin; yoksa yedek kanal mesaji kullanilir.)
 - Slash command: `/unico-poll`
 - Event subscription: `message.channels`, `message.groups`
 
-## 6) GitHub'a ilk push adimlari
+**Kanala ekleme:** Uygulama workspace'e bir kez yuklendikten sonra uyeler genelde `/invite @UnicoPoll` (veya bot adin ne ise) ile botu kanala davet edebilir; bunu Slack workspace yonetimi engellemiyorsa herkes yapabilir. Dagitim icin Slack App ayarlarinda **Manage Distribution** / Install adimlarini tamamlaman gerekir.
+
+## 6) Git commit ve push
 
 ```bash
-cd "C:\Users\erdem\Downloads\fur agent"
-git add unico-poll
-git commit -m "Add Unico Poll Slack Bolt app with JSON state and run-off flow"
-git branch -M main
-git remote add origin https://github.com/<YOUR_USERNAME>/<YOUR_REPO>.git
-git push -u origin main
+cd unico-poll
+git add -A
+git commit -m "Describe your change"
+git push
 ```

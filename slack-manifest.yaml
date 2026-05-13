@@ -19,7 +19,7 @@ features:
   slash_commands:
     - command: /unico-poll
       description: Start a 3-phase Unico poll
-      usage_hint: "Poll Title | 48h"
+      usage_hint: "Baslik | 48h — veya onersiz: Baslik | direkt"
       should_escape: false
 
 oauth_config:
@@ -31,6 +31,7 @@ oauth_config:
       - channels:history
       - groups:history
       - im:history
+      - im:write
       - mpim:history
 
 settings:

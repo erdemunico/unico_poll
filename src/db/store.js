@@ -58,7 +58,13 @@ function persist() {
   fs.writeFileSync(storePath, JSON.stringify(state, null, 2), "utf8");
 }
 
+/** Drop in-memory cache so the next getState() re-reads the JSON file (multi-process / external writes). */
+function reloadStoreFromDisk() {
+  state = null;
+}
+
 module.exports = {
   getState,
   persist,
+  reloadStoreFromDisk,
 };
