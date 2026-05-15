@@ -43,6 +43,14 @@ async function runSchedulerTick(app) {
 
   const expiredVoting = pollService.getExpiredVotingPolls();
   for (const poll of expiredVoting) {
+    store.reloadStoreFromDisk();
+    const fresh = pollService.getPollById(poll.id);
+    if (!fresh || fresh.phase !== "voting") {
+      continue;
+    }
+    if (fresh.creator_results_sent_at) {
+      continue;
+    }
     if (!pollService.tryClaimVotingCloseDelivery(poll.id)) {
       continue;
     }

@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require("uuid");
-const { getState, persist } = require("../db/store");
+const { getState, persist, reloadStoreFromDisk } = require("../db/store");
 const { addHoursIso, addMinutesIso, nowIso, isPastIso } = require("../utils/time");
 const { parseSuggestionInput } = require("../utils/parser");
 const env = require("../config/env");
@@ -294,11 +294,12 @@ function startVoting({ pollId, voteMode, isOpenVote, votingHours }) {
   if (idx === -1) {
     throw new Error("Poll not found.");
   }
-  const allowOpen = voteMode === "classic" && Boolean(isOpenVote);
+  const modeNorm = String(voteMode || "classic").trim().toLowerCase();
+  const allowOpen = modeNorm === "classic" && Boolean(isOpenVote);
   state.polls[idx] = {
     ...state.polls[idx],
     phase: "voting",
-    vote_mode: voteMode,
+    vote_mode: modeNorm === "rating" ? "rating" : "classic",
     is_open_vote: allowOpen ? 1 : 0,
     voting_deadline_at: resolveDeadlineFromHours(votingHours || env.defaultVotingHours),
     updated_at: nowIso(),
@@ -392,8 +393,9 @@ function castClassicVote({ pollId, userId, suggestionId }) {
   const state = getState();
   const poll = getPollById(pollId);
   const mode = String(poll?.vote_mode || "").trim().toLowerCase();
+  const openVote = isOpenVotePoll(poll);
   if (!poll || poll.phase !== "voting" || mode !== "classic" || isPastIso(poll.voting_deadline_at)) {
-    return { ok: false, reason: "Classic voting is closed." };
+    return { ok: false, reason: "Classic voting is closed.", openVote: false };
   }
 
   const existing = state.votes_classic.find((v) => v.poll_id === pollId && v.user_id === userId);
@@ -402,9 +404,10 @@ function castClassicVote({ pollId, userId, suggestionId }) {
       return {
         ok: false,
         reason: "Bu ankette oy kullandin; oy degistirilemez.",
+        openVote,
       };
     }
-    return { ok: true, recorded: false };
+    return { ok: true, recorded: false, openVote };
   }
   const ts = nowIso();
   state.votes_classic.push({
@@ -415,7 +418,7 @@ function castClassicVote({ pollId, userId, suggestionId }) {
     created_at: ts,
   });
   persist();
-  return { ok: true, recorded: true };
+  return { ok: true, recorded: true, openVote };
 }
 
 function hasUserRatingSubmissionForPoll(pollId, userId) {
@@ -501,28 +504,38 @@ function setVotingMessageMeta({ pollId, channel, ts }) {
  * Prevents duplicate notifications when the scheduler overlaps or multiple bot processes share the JSON file.
  */
 function tryClaimCreatorResultsNotification(pollId) {
+  reloadStoreFromDisk();
   const state = getState();
   const idx = state.polls.findIndex((p) => p.id === pollId);
   if (idx === -1) {
-    return false;
+    return { ok: false };
   }
   if (state.polls[idx].creator_results_sent_at) {
-    return false;
+    return { ok: false };
   }
-  const ts = nowIso();
+  const claimTs = nowIso();
   state.polls[idx] = {
     ...state.polls[idx],
-    creator_results_sent_at: ts,
-    updated_at: ts,
+    creator_results_sent_at: claimTs,
+    updated_at: claimTs,
   };
   persist();
-  return true;
+  reloadStoreFromDisk();
+  const after = getPollById(pollId);
+  if (!after || after.creator_results_sent_at !== claimTs) {
+    return { ok: false };
+  }
+  return { ok: true, claimTs };
 }
 
-function clearCreatorResultsSent(pollId) {
+function clearCreatorResultsSent(pollId, onlyIfClaimTs = null) {
+  reloadStoreFromDisk();
   const state = getState();
   const idx = state.polls.findIndex((p) => p.id === pollId);
   if (idx === -1) {
+    return;
+  }
+  if (onlyIfClaimTs && state.polls[idx].creator_results_sent_at !== onlyIfClaimTs) {
     return;
   }
   state.polls[idx] = {
@@ -570,28 +583,38 @@ function getUserVoteSummaryLines({ pollId, actingUserIds }) {
 
 /** Atomically reserve a single channel publish for this poll; clear on postMessage failure. */
 function tryClaimChannelResultsPublished(pollId) {
+  reloadStoreFromDisk();
   const state = getState();
   const idx = state.polls.findIndex((p) => p.id === pollId);
   if (idx === -1) {
-    return false;
+    return { ok: false };
   }
   if (state.polls[idx].channel_results_published_at) {
-    return false;
+    return { ok: false };
   }
-  const ts = nowIso();
+  const claimTs = nowIso();
   state.polls[idx] = {
     ...state.polls[idx],
-    channel_results_published_at: ts,
-    updated_at: ts,
+    channel_results_published_at: claimTs,
+    updated_at: claimTs,
   };
   persist();
-  return true;
+  reloadStoreFromDisk();
+  const after = getPollById(pollId);
+  if (!after || after.channel_results_published_at !== claimTs) {
+    return { ok: false };
+  }
+  return { ok: true, claimTs };
 }
 
-function clearChannelResultsPublished(pollId) {
+function clearChannelResultsPublished(pollId, onlyIfClaimTs = null) {
+  reloadStoreFromDisk();
   const state = getState();
   const idx = state.polls.findIndex((p) => p.id === pollId);
   if (idx === -1) {
+    return;
+  }
+  if (onlyIfClaimTs && state.polls[idx].channel_results_published_at !== onlyIfClaimTs) {
     return;
   }
   state.polls[idx] = {
@@ -625,12 +648,16 @@ const VOTING_CLOSE_CLAIM_STALE_MS = 15 * 60 * 1000;
  * Stale claims (>15m) can be stolen so a crashed worker does not block forever.
  */
 function tryClaimVotingCloseDelivery(pollId) {
+  reloadStoreFromDisk();
   const state = getState();
   const idx = state.polls.findIndex((p) => p.id === pollId);
   if (idx === -1) {
     return false;
   }
   const p = state.polls[idx];
+  if (p.creator_results_sent_at) {
+    return false;
+  }
   if (p.phase !== "voting" || !p.voting_deadline_at || !isPastIso(p.voting_deadline_at)) {
     return false;
   }
@@ -641,14 +668,16 @@ function tryClaimVotingCloseDelivery(pollId) {
       return false;
     }
   }
-  const ts = nowIso();
+  const claimTs = nowIso();
   state.polls[idx] = {
     ...p,
-    voting_close_claimed_at: ts,
-    updated_at: ts,
+    voting_close_claimed_at: claimTs,
+    updated_at: claimTs,
   };
   persist();
-  return true;
+  reloadStoreFromDisk();
+  const after = getPollById(pollId);
+  return Boolean(after && after.voting_close_claimed_at === claimTs);
 }
 
 function clearVotingCloseDeliveryClaim(pollId) {

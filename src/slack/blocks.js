@@ -1,5 +1,5 @@
 const { formatSlackDate } = require("../utils/time");
-const { formatPollResultRowMrkdwn } = require("../utils/suggestionMeta");
+const { formatPollResultRowMrkdwn, formatWinnersLabel } = require("../utils/suggestionMeta");
 const pollService = require("../services/pollService");
 
 /** static_select value: bu sirayi kullanma */
@@ -522,7 +522,9 @@ function votingBlocks({ poll, suggestions }) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*${poll.title}* oylamasi acik.\nBitis: ${formatSlackDate(poll.voting_deadline_at)}\n${visibilityLine}`,
+        text:
+          `<!channel> *${poll.title}* oylamasi acik.\n` +
+          `Bitis: ${formatSlackDate(poll.voting_deadline_at)}\n${visibilityLine}`,
       },
     },
   ];
@@ -579,7 +581,7 @@ function votingClosedBlocks({ poll }) {
       text: {
         type: "mrkdwn",
         text:
-          `*${poll.title}* — oylama *kapandi*.\n` +
+          `<!channel> *${poll.title}* — oylama *kapandi*.\n` +
           `Oylar artik degistirilemez. Asagidan yalnizca *kendi oylarini* gorursun (salt okunur).` +
           extra,
       },
@@ -702,12 +704,12 @@ function creatorResultsBlocks({ poll, results, close }) {
 }
 
 function channelResultsBlocks({ poll, results }) {
-  const winner = results[0];
+  const winnersLabel = formatWinnersLabel(results);
   const lines = results.map((r, idx) => formatPollResultRowMrkdwn(r, idx + 1));
   return [
     {
       type: "section",
-      text: { type: "mrkdwn", text: `*${poll.title}* sonuclari yayinlandi.` },
+      text: { type: "mrkdwn", text: `<!channel> *${poll.title}* sonuclari yayinlandi.` },
     },
     {
       type: "section",
@@ -721,7 +723,7 @@ function channelResultsBlocks({ poll, results }) {
       elements: [
         {
           type: "mrkdwn",
-          text: `Kazanan: *${winner ? winner.display_name : "Yok"}*`,
+          text: `Kazanan: *${winnersLabel}*`,
         },
       ],
     },

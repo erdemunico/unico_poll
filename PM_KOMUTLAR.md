@@ -43,6 +43,8 @@ Kullanicilarin gordugu ana tetikleyiciler:
 
 **Not:** *Acik oy* (oy verenin kanalda kisa **ayri mesaj** olarak gorunmesi) yalnizca **klasik (tek oy)** modunda secilebilir. **Puanlama (1-5)** modunda oy her zaman kapalidir.
 
+**Kanal sonuclari:** *Sonuclari Kanala Yayinla* sonunda *Kazanan* satirinda en yuksek skora sahip **tum** adaylar yazilir (beraberlikte or. *Ahmet — Kemal*).
+
 ---
 
 *Dosya: Unico Poll uygulamasinin mevcut davranisina gore uretilmistir.*

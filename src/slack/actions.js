@@ -130,35 +130,78 @@ function collectDirectBallotOptionLines(view) {
   return { ok: true, lines };
 }
 
-function plainTextFallbackFromMrkdwn(s) {
-  const t = String(s || "")
-    .replace(/\*+/g, "")
-    .replace(/_+/g, "")
-    .trim();
-  return t.slice(0, 280) || "Oy bildirimi";
-}
-
-async function postOpenVoteChannelNotice(client, { poll, text, channelId }) {
-  const ch = channelId || poll?.voting_message_channel || poll?.channel_id;
-  if (!ch || !text) {
+async function notifyOpenClassicVote(client, body, pollId, suggestionId, { openVote } = {}) {
+  store.reloadStoreFromDisk();
+  const poll = pollService.getPollById(pollId);
+  const isOpen = openVote === true || (openVote !== false && pollService.isOpenVotePoll(poll));
+  if (!poll || !isOpen) {
+    logger.warn("Open vote notice skipped", {
+      pollId,
+      openVoteFlag: openVote,
+      is_open_vote: poll?.is_open_vote,
+      vote_mode: poll?.vote_mode,
+    });
     return;
   }
-  const plain = plainTextFallbackFromMrkdwn(text);
-  const blocks = [
-    {
-      type: "section",
-      text: { type: "mrkdwn", text },
-    },
-  ];
-  try {
-    await client.chat.postMessage({
-      channel: ch,
-      text: plain,
-      blocks,
-    });
-  } catch (err) {
-    logger.error("Open vote channel post failed", { channel: ch, error: err.message });
+  const uid = primarySlackUserId(body) || body?.user?.id;
+  const label = pollService.getSuggestionDisplayNameForPoll({ pollId, suggestionId });
+  const safeLabel = String(label || "?")
+    .replace(/[*_`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+  const voterTag = uid ? `<@${uid}>` : "Bir kullanici";
+  const mrkdwn = `${voterTag} oy kullandi: ${safeLabel || "?"}`;
+  const plain = mrkdwn;
+  const ch = poll.voting_message_channel || poll.channel_id;
+  if (!ch) {
+    logger.warn("Open vote: poll has no channel_id", { pollId });
+    return;
   }
+
+  const payload = {
+    channel: ch,
+    text: plain,
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: mrkdwn } }],
+    link_names: true,
+  };
+
+  try {
+    if (poll.voting_message_ts) {
+      await client.chat.postMessage({
+        ...payload,
+        thread_ts: poll.voting_message_ts,
+        reply_broadcast: true,
+      });
+    } else {
+      await client.chat.postMessage(payload);
+    }
+    logger.info("Open vote notice posted", { pollId, channel: ch, userId: uid, thread: Boolean(poll.voting_message_ts) });
+  } catch (err) {
+    logger.error("Open vote post failed (thread/broadcast)", {
+      pollId,
+      channel: ch,
+      error: err.message,
+      slack: err.data?.error,
+    });
+    try {
+      await client.chat.postMessage({ ...payload, channel: poll.channel_id || ch });
+      logger.info("Open vote notice posted (channel fallback)", { pollId });
+    } catch (err2) {
+      logger.error("Open vote channel fallback failed", { pollId, error: err2.message, slack: err2.data?.error });
+    }
+  }
+}
+
+function votePrivacyFromModalState(st, mode) {
+  if (String(mode || "").trim().toLowerCase() === "rating") {
+    return "closed";
+  }
+  const raw = st.vote_privacy?.vote_privacy_select?.selected_option?.value;
+  if (raw == null || String(raw).trim() === "") {
+    return null;
+  }
+  return String(raw).trim().toLowerCase();
 }
 
 function slackErrorDetail(err) {
@@ -204,6 +247,35 @@ async function refreshVotingChannelMessageClosed(client, pollId) {
   }
 }
 
+function withChannelMention(text, fallback) {
+  const base = String(text || fallback || "").trim();
+  if (!base) {
+    return "<!channel>";
+  }
+  if (base.includes("<!channel>")) {
+    return base;
+  }
+  return `<!channel> ${base}`;
+}
+
+async function postVotingEndedChannelNotice(client, poll) {
+  if (!poll?.channel_id) {
+    return;
+  }
+  const body =
+    `<!channel> *${poll.title}* — oylama *bitti*.\n` +
+    "_Sonuclar anketi baslatan kisiye gonderildi; kanala yayin icin onun paylasmasini bekle._";
+  try {
+    await client.chat.postMessage({
+      channel: poll.channel_id,
+      text: `<!channel> ${poll.title} — oylama bitti.`,
+      blocks: [{ type: "section", text: { type: "mrkdwn", text: body } }],
+    });
+  } catch (err) {
+    logger.error("Voting ended channel notice failed", { pollId: poll.id, error: err.message });
+  }
+}
+
 async function postChannelVotingMessage(client, { poll, suggestions, text }) {
   const p = pollService.getPollById(poll.id);
   if (!p) {
@@ -212,7 +284,7 @@ async function postChannelVotingMessage(client, { poll, suggestions, text }) {
   const fallbackText = `<!channel> ${p.title} oylamasi basladi.`;
   const res = await client.chat.postMessage({
     channel: p.channel_id,
-    text: text || fallbackText,
+    text: withChannelMention(text, fallbackText),
     blocks: votingBlocks({ poll: p, suggestions }),
   });
   if (res.ok && res.ts && res.channel) {
@@ -223,18 +295,24 @@ async function postChannelVotingMessage(client, { poll, suggestions, text }) {
 
 async function sendCreatorResults(app, pollId) {
   try {
+    store.reloadStoreFromDisk();
     const pollPre = pollService.getPollById(pollId);
     if (!pollPre) {
       return;
     }
-    if (!pollService.tryClaimCreatorResultsNotification(pollId)) {
-      logger.info("Skipping duplicate creator results notification", { pollId });
+    if (pollPre.creator_results_sent_at) {
+      logger.info("Skipping duplicate creator results notification (already sent)", { pollId });
+      return;
+    }
+    const claim = pollService.tryClaimCreatorResultsNotification(pollId);
+    if (!claim.ok) {
+      logger.info("Skipping duplicate creator results notification (claim lost)", { pollId });
       return;
     }
     try {
       const data = pollService.buildResults(pollId);
       if (!data) {
-        pollService.clearCreatorResultsSent(pollId);
+        pollService.clearCreatorResultsSent(pollId, claim.claimTs);
         return;
       }
       const close = pollService.isCloseResult(data.results);
@@ -245,8 +323,9 @@ async function sendCreatorResults(app, pollId) {
         text: "Oylama bitti.",
         blocks: creatorResultsBlocks({ poll: data.poll, results: data.results, close }),
       });
+      await postVotingEndedChannelNotice(app.client, data.poll);
     } catch (error) {
-      pollService.clearCreatorResultsSent(pollId);
+      pollService.clearCreatorResultsSent(pollId, claim.claimTs);
       throw error;
     }
     try {
@@ -422,18 +501,25 @@ function registerActions(app) {
 
     const st = view.state.values;
     const mode = st.vote_mode?.vote_mode_select?.selected_option?.value;
-    const privacy =
-      mode === "rating" ? "closed" : st.vote_privacy?.vote_privacy_select?.selected_option?.value;
-    if (!mode || (mode === "classic" && !privacy)) {
+    const privacy = votePrivacyFromModalState(st, mode);
+    if (!mode) {
       await ack({
         response_action: "errors",
-        errors: {
-          vote_mode: "Oylama turunu sec; klasik modda oy gorunurlugunu da secmelisin.",
-        },
+        errors: { vote_mode: "Oylama turunu sec." },
       });
       return;
     }
     const hours = Number.parseInt(st.vote_duration?.vote_duration_input?.value, 10) || env.defaultVotingHours;
+    if (mode === "classic" && !privacy) {
+      await ack({
+        response_action: "errors",
+        errors: {
+          vote_privacy: "Oy gorunurlugunu listeden sec (Acik veya Kapali).",
+        },
+      });
+      return;
+    }
+    const openVote = mode === "classic" && privacy === "open";
 
     await ack();
     const meta = parseMetadata(view.private_metadata);
@@ -505,7 +591,7 @@ function registerActions(app) {
       updatedPoll = pollService.startVoting({
         pollId: poll.id,
         voteMode: mode,
-        isOpenVote: mode === "classic" && privacy === "open",
+        isOpenVote: openVote,
         votingHours: hours,
       });
       shortlist = pollService.getShortlistedSuggestions(poll.id);
@@ -583,18 +669,25 @@ function registerActions(app) {
 
     const st = view.state.values;
     const mode = st.vote_mode?.vote_mode_select?.selected_option?.value;
-    const privacy =
-      mode === "rating" ? "closed" : st.vote_privacy?.vote_privacy_select?.selected_option?.value;
+    const privacy = votePrivacyFromModalState(st, mode);
     const hours = Number.parseInt(st.vote_duration?.vote_duration_input?.value, 10) || env.defaultVotingHours;
-    if (!mode || (mode === "classic" && !privacy)) {
+    if (!mode) {
+      await ack({
+        response_action: "errors",
+        errors: { vote_mode: "Oylama turunu sec." },
+      });
+      return;
+    }
+    if (mode === "classic" && !privacy) {
       await ack({
         response_action: "errors",
         errors: {
-          vote_mode: "Oylama turunu sec; klasik modda oy gorunurlugunu da secmelisin.",
+          vote_privacy: "Oy gorunurlugunu listeden sec (Acik veya Kapali).",
         },
       });
       return;
     }
+    const openVote = mode === "classic" && privacy === "open";
 
     const allSuggestions = pollService.listSuggestions(poll.id);
     const slotParse = parseShortlistSlotsFromView(st, allSuggestions);
@@ -646,7 +739,7 @@ function registerActions(app) {
       updatedPoll = pollService.startVoting({
         pollId: poll.id,
         voteMode: mode,
-        isOpenVote: mode === "classic" && privacy === "open",
+        isOpenVote: openVote,
         votingHours: hours,
       });
       shortlist = pollService.getShortlistedSuggestions(poll.id);
@@ -701,23 +794,8 @@ function registerActions(app) {
           ? "Oyun bu secenekle zaten kayitli."
           : "Oyun kaydedildi.",
     });
-    if (vote.ok && vote.recorded) {
-      const pollForNotice = pollService.getPollById(value.pollId);
-      if (pollForNotice && pollService.isOpenVotePoll(pollForNotice)) {
-        const label = pollService.getSuggestionDisplayNameForPoll({
-          pollId: value.pollId,
-          suggestionId: value.suggestionId,
-        });
-        const safeLabel = String(label || "?")
-          .replace(/[*_`]/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 200);
-        await postOpenVoteChannelNotice(client, {
-          poll: pollForNotice,
-          text: `<@${uid}> oy kullandi: *${safeLabel || "?"}*`,
-        });
-      }
+    if (vote.ok && vote.recorded && vote.openVote) {
+      await notifyOpenClassicVote(client, body, value.pollId, value.suggestionId, { openVote: true });
     }
   });
 
@@ -773,23 +851,8 @@ function registerActions(app) {
           ? "Oyun bu secenekle zaten kayitli."
           : "Oyun kaydedildi.",
     });
-    if (vote.ok && vote.recorded) {
-      const pollForNotice = pollService.getPollById(meta.pollId);
-      if (pollForNotice && pollService.isOpenVotePoll(pollForNotice)) {
-        const label = pollService.getSuggestionDisplayNameForPoll({
-          pollId: meta.pollId,
-          suggestionId,
-        });
-        const safeLabel = String(label || "?")
-          .replace(/[*_`]/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 200);
-        await postOpenVoteChannelNotice(client, {
-          poll: pollForNotice,
-          text: `<@${uid}> oy kullandi: *${safeLabel || "?"}*`,
-        });
-      }
+    if (vote.ok && vote.recorded && vote.openVote) {
+      await notifyOpenClassicVote(client, body, meta.pollId, suggestionId, { openVote: true });
     }
   });
 
@@ -901,12 +964,7 @@ function registerActions(app) {
       text: "Puanlarin kaydedildi.",
     });
 
-    if (pollService.isOpenVotePoll(poll) && openParts.length) {
-      await postOpenVoteChannelNotice(client, {
-        poll,
-        text: `<@${uid}> puan verdi: ${openParts.join(" · ")}`,
-      });
-    }
+
   });
 
   app.action("show_my_votes", async ({ ack, body, client }) => {
@@ -964,7 +1022,17 @@ function registerActions(app) {
     }
 
     store.reloadStoreFromDisk();
-    if (!pollService.tryClaimChannelResultsPublished(pollId)) {
+    const freshPoll = pollService.getPollById(pollId);
+    if (freshPoll?.channel_results_published_at) {
+      await safePostEphemeral(client, {
+        channelId: ephemeralChannel,
+        user: ephemeralUser,
+        text: "Sonuclar zaten bu anket icin kanala yayinlanmis.",
+      });
+      return;
+    }
+    const publishClaim = pollService.tryClaimChannelResultsPublished(pollId);
+    if (!publishClaim.ok) {
       await safePostEphemeral(client, {
         channelId: ephemeralChannel,
         user: ephemeralUser,
@@ -976,12 +1044,12 @@ function registerActions(app) {
     try {
       await client.chat.postMessage({
         channel: data.poll.channel_id,
-        text: `<!channel> ${data.poll.title} sonuclari`,
+        text: withChannelMention(null, `${data.poll.title} sonuclari`),
         blocks: channelResultsBlocks(data),
       });
       logger.info("Results published", { pollId, userId: ephemeralUser });
     } catch (error) {
-      pollService.clearChannelResultsPublished(pollId);
+      pollService.clearChannelResultsPublished(pollId, publishClaim.claimTs);
       logger.error("Failed to publish results", { pollId, error: error.message });
       await safePostEphemeral(client, {
         channelId: ephemeralChannel,
