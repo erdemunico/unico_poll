@@ -1,6 +1,7 @@
 const { formatSlackDate } = require("../utils/time");
 const { formatPollResultRowMrkdwn, formatWinnersLabel } = require("../utils/suggestionMeta");
 const pollService = require("../services/pollService");
+const env = require("../config/env");
 
 /** static_select value: bu sirayi kullanma */
 const SLOT_MODE_SKIP = "__mode_skip__";
@@ -39,6 +40,7 @@ function voteModeFromPreserved(st) {
 }
 
 function suggestionAnnouncementBlocks(poll) {
+  const maxPerUser = Math.max(1, env.suggestionMaxPerUser || 5);
   return [
     {
       type: "section",
@@ -46,8 +48,8 @@ function suggestionAnnouncementBlocks(poll) {
         type: "mrkdwn",
         text:
           `<!channel> *Unico Poll* — *${poll.title}*\n` +
-          `*Ne yapacaksin?* Asagidaki *Oneri gonder (form)* dugmesini kullan **veya** bu kanala *slash yazmadan* ana mesaj olarak tek satir yaz.\n` +
-          `*(Thread / yanit olarak yazma; bot ana mesajlari ve formu dinler.)*\n` +
+          `*Ne yapacaksin?* Asagidaki *Oneri gonder (form)* dugmesine basarak onerini gonder.\n` +
+          `Her kisi en fazla *${maxPerUser}* oneri verebilir.\n` +
           `*Son oneri zamani:* ${formatSlackDate(poll.suggestion_deadline_at)}`,
       },
     },
@@ -70,9 +72,9 @@ function suggestionAnnouncementBlocks(poll) {
         type: "mrkdwn",
         text:
           `*Oneri nasil yazilir?*\n` +
-          `• *Sadece isim:* \`Yaz Kampi\`\n` +
-          `• *PM kodu + not (istege bagli):* \`Yaz Kampi : PM_KODU ; kisa aciklama\`\n` +
-          `_\`:\` oncesi kisim oylamada gorunen isimdir; PM ve not zorunlu degil._`,
+          `• *Sadece oyun ismi:* \`Onerilen Oyun ismi\`\n` +
+          `• *Isim + not (istege bagli):* \`Onerilen Oyun ismi : Isminiz ; Varsa notunuz\`\n` +
+          `_\`:\` oncesi kisim oylamada gorunen oyun ismidir; isminiz ve not zorunlu degil._`,
       },
     },
     {
@@ -220,9 +222,9 @@ function buildDirectBallotModal({ poll, preservedValues = null }) {
       text:
         `*${poll.title}* — *direkt oylama* secenekleri (en az *2*, en fazla *10*).\n` +
         `Her kutuya *tek satir* yaz (slash kullanma). Bos satirlar yok sayilir.\n` +
-        `• *Sadece isim:* \`Yaz Kampi\`\n` +
-        `• *PM + not (istege bagli):* \`Yaz Kampi : PM_KODU ; kisa aciklama\`\n` +
-        `_\`:\` oncesi kisim oylamada gorunur; PM/not sadece kayit icin tutulur._`,
+        `• *Sadece oyun ismi:* \`Onerilen Oyun ismi\`\n` +
+        `• *Isim + not (istege bagli):* \`Onerilen Oyun ismi : Isminiz ; Varsa notunuz\`\n` +
+        `_\`:\` oncesi kisim oylamada gorunur; isim/not sadece kayit icin tutulur._`,
     },
   };
 
@@ -343,6 +345,7 @@ function creatorSuggestionControlBlocks(poll, suggestions, maxOptions) {
         text: { type: "plain_text", text: "Oylama listesini sec" },
         action_id: "open_start_voting_modal",
         value: poll.id,
+        style: "primary",
       },
     },
   ];
@@ -550,6 +553,7 @@ function votingBlocks({ poll, suggestions }) {
           text: { type: "plain_text", text: "Tum Secenekleri Ac" },
           action_id: "open_classic_vote_modal",
           value: poll.id,
+          style: "primary",
         },
       });
     }
@@ -565,6 +569,7 @@ function votingBlocks({ poll, suggestions }) {
         text: { type: "plain_text", text: "Puanlama Ekranini Ac" },
         action_id: "open_rating_modal",
         value: poll.id,
+        style: "primary",
       },
     });
   }
@@ -745,7 +750,8 @@ function buildSuggestionModal({ poll }) {
           type: "mrkdwn",
           text:
             `*${poll.title}* — *tek satir* (slash yazma).\n` +
-            `Ornek: \`Yaz Kampi\` veya \`Yaz Kampi : PM123 ; kisa not\``,
+            `Ornek: \`Onerilen Oyun ismi\` veya \`Onerilen Oyun ismi : Isminiz ; Varsa notunuz\`\n` +
+            `_Bu ankette en fazla ${Math.max(1, env.suggestionMaxPerUser || 5)} oneri verebilirsin._`,
         },
       },
       {

@@ -710,7 +710,8 @@ function registerActions(app) {
           await ack({
             response_action: "errors",
             errors: {
-              [`slot_text_${item.slot}`]: "Gecersiz metin. Ornek: Isim veya Isim : PM ; not",
+              [`slot_text_${item.slot}`]:
+                "Gecersiz metin. Ornek: Onerilen Oyun ismi veya Onerilen Oyun ismi : Isminiz ; Varsa notunuz",
             },
           });
           return;

@@ -24,7 +24,8 @@ Kanalda yazilir; **o kanalda** anket acar veya kapatir. Ayni kanalda ayni anda t
 
 | Ne yapilir | Ne olur |
 |------------|---------|
-| Kanala **normal mesaj** (slash ile baslamayan) | Sadece anket **oneri fazindaysa** mesaj, kurallara uygunsa **oneri** olarak kaydedilir (format: `Isim` veya `Isim : PM kodu ; not`). |
+| *Oneri gonder (form)* dugmesi | Oneri fazinda form acilir. Her kisi en fazla **5** oneri (`.env`: `SUGGESTION_MAX_PER_USER`). Limit dolunca form acilmaz. |
+| Kanala normal mesaj | **Oneri olarak islenmez** (bot kanal mesajlarini oneri icin dinlemez). |
 
 ---
 
@@ -36,7 +37,7 @@ Kullanicilarin gordugu ana tetikleyiciler:
 |-----------------|------|----------|
 | Secenekleri gir (yonetici) | Anketi acan | **Direkt modda:** slash cevabinda (ephemeral), bota DM veya (DM yoksa) kanalda yalnizca sana gorunen/etiketli mesajdaki dugme. Tiklayinca oylama secenekleri + tur (klasik / puanlama, acik/kapali oy) modal ile girilir. |
 | Oylama listesini sec | Anketi acan | Oneri suresi bitince gelen listeden oylamaya girecekleri secer, oylamayi baslatir. |
-| Kanaldaki oy dugmeleri / modallar | Katilimcilar | Oy veya puan verir. |
+| Oneri gonder (form) | Katilimci | Oneri fazinda form acar. Limit dolunca (varsayilan 5) form acilmaz. |
 | Oylarini gor | Katilimci | Oylama kapandiktan sonra **kendi** oyunu salt okunur gosterir. |
 | Sonuclari Kanala Yayinla | Anketi acan | Final sonuclarini **kanala** bir kez yayinlar (tekrar tiklamada engellenir). |
 | Run-off baslat (ilk 3) | Anketi acan | **Istege bagli.** Sonuc ozetinde en az 2 secenek varken gorunur; tiklayinca mevcut siralamadaki *ilk 3* ile yeni oylama anketi acilir. Kanala yayinlamadan once veya sonra kullanilabilir. |

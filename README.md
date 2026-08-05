@@ -79,8 +79,9 @@ FAST_TEST_MINUTES=5
 
 Bu mod aktifken suggestion/voting/run-off sureleri saat yerine belirtilen dakika ile otomatik ayarlanir. **Canliya cikarken** `.env` icinde `FAST_TEST_MODE=false` yap ve botu yeniden baslat.
 
-Oneri spam korumasi icin:
-- `SUGGESTION_RATE_LIMIT_COUNT`: pencere icindeki max oneriler
+Oneri spam / limit:
+- `SUGGESTION_MAX_PER_USER`: anket basina kisi basina max oneri (varsayilan 5; form limit dolunca acilmaz)
+- `SUGGESTION_RATE_LIMIT_COUNT`: pencere icindeki max oneriler (ek hiz korumasi)
 - `SUGGESTION_RATE_LIMIT_WINDOW_MINUTES`: pencere suresi (dakika)
 
 ### Workspace yoneticileri (opsiyonel kisit)
@@ -103,8 +104,9 @@ Bos birakilir: kanal uyeleri (Slack uygulama izinlerine gore) komutu kullanabili
 - `|` oncesi metin kanalda gorunen **baslik**dir.
 - Kanal oneri modunda: `|` sonrasi `48h` gibi ifade oneri toplama suresidir (varsayilan `.env` de kullanilabilir).
 - **Onerisiz / direkt:** `|` sonrasina `direkt`, `onersiz`, `kanalsiz` veya `no-suggestions` yazarsan kanalda oneri toplanmaz. Kanal uyeleri oylama mesajini **gormeden once** yonetici secenekleri girer: komut cevabinda (yalnizca sana gorunen) *Secenekleri gir* dugmesi gelir; ayrica bota **DM** (tercih) ve DM acilmazsa kanalda yalnizca seni etiketleyen yedek mesaj kullanilabilir. Oylama baslayinca `<!channel>` ile kanal duyurusu normal sekilde yapilir. Ornek: `/unico-poll Lig maci | direkt`. `48h direkt` gibi yazsan bile direkt modda oneri suresi kullanilmaz.
-- Katilimcilar kanala **tek satir** mesaj yazarak oneri verir; `:` yoksa tum satir oylamaya *cikarilabilecek* aday olarak kaydedilir.
-- Istege bagli ayrintili format: `Oneri Ismi : PM kodu ; not` — oylamada gorunen kisim `:` oncesidir; sonrasi sadece kayit icindir.
+- Katilimcilar *Oneri gonder (form)* dugmesi ile oneri verir (kanal mesajlari dinlenmez).
+- Her kisi ankette en fazla `SUGGESTION_MAX_PER_USER` (varsayilan **5**) oneri verebilir; limit dolunca form acilmaz.
+- Istege bagli ayrintili format: `Onerilen Oyun ismi : Isminiz ; Varsa notunuz` — oylamada gorunen kisim `:` oncesidir; sonrasi sadece kayit icindir. Sadece oyun ismi de yeter: `Onerilen Oyun ismi`.
 - Aktif anketi **yalnizca baslatan** kapatabilir: `/unico-poll iptal` veya `/unico-poll cancel` (`|` kullanma).
 - Oneri suresi bitince **2'den az** oneri varsa anket otomatik kapanir; kanal blokta kalmaz.
 

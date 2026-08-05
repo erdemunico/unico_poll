@@ -90,6 +90,8 @@ const env = {
     .filter(Boolean),
   suggestionRateLimitCount: toInt(process.env.SUGGESTION_RATE_LIMIT_COUNT, 0),
   suggestionRateLimitWindowMinutes: toInt(process.env.SUGGESTION_RATE_LIMIT_WINDOW_MINUTES, 1),
+  /** Anket basina kullanici max oneri (form). 0 = sinirsiz. */
+  suggestionMaxPerUser: toInt(process.env.SUGGESTION_MAX_PER_USER, 5),
 };
 
 const required = ["slackBotToken", "slackSigningSecret", "slackAppToken"];

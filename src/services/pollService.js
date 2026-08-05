@@ -114,6 +114,16 @@ function addSuggestion({ pollId, userId, parsed }) {
     return { ok: false, reason: "This suggestion already exists." };
   }
 
+  const maxPerUser = env.suggestionMaxPerUser;
+  if (maxPerUser > 0) {
+    const userCount = state.suggestions.filter(
+      (s) => s.poll_id === pollId && s.submitted_by === userId
+    ).length;
+    if (userCount >= maxPerUser) {
+      return { ok: false, reason: "User suggestion limit reached." };
+    }
+  }
+
   const id = uuidv4();
   state.suggestions.push({
     id,
@@ -138,6 +148,11 @@ function getUserSuggestionCountSince({ pollId, userId, sinceIso }) {
     }
     return new Date(s.created_at).getTime() >= since;
   }).length;
+}
+
+function getUserSuggestionCount({ pollId, userId }) {
+  const state = getState();
+  return state.suggestions.filter((s) => s.poll_id === pollId && s.submitted_by === userId).length;
 }
 
 function listSuggestions(pollId) {
@@ -823,6 +838,7 @@ module.exports = {
   pollManagedByAnyOf,
   addSuggestion,
   getUserSuggestionCountSince,
+  getUserSuggestionCount,
   listSuggestions,
   saveShortlist,
   getShortlistedSuggestions,

@@ -12,23 +12,6 @@ const {
   buildSuggestionModal,
 } = require("./blocks");
 
-/** Bu subtype'lar kullanici onerisi degildir; digerlerinde metin varsa islenmeye calisilir. */
-const IGNORED_MESSAGE_SUBTYPES = new Set([
-  "bot_message",
-  "message_changed",
-  "message_deleted",
-  "channel_join",
-  "channel_leave",
-  "channel_topic",
-  "channel_purpose",
-  "channel_archive",
-  "channel_unarchive",
-  "pinned_item",
-  "unpinned_item",
-  "ekm",
-  "file_share",
-]);
-
 function parseCommandText(text) {
   const raw = String(text || "").trim();
   if (!raw) {
@@ -222,7 +205,8 @@ function registerCommands(app) {
         channel: channelId,
         user: creatorId,
         text:
-          "Anket olusturuldu; *sen yoneticisin*. Kanaldaki mesaj *katilimcilara*: ne yazacaklari ve son tarih. " +
+          "Anket olusturuldu; *sen yoneticisin*. Katilimcilar *Oneri gonder (form)* ile oneri verir (kanal mesaji dinlenmez). " +
+          `Her kisi en fazla *${Math.max(1, env.suggestionMaxPerUser || 5)}* oneri verebilir. ` +
           "Oneri listesi ve oylama kisa listesi sana bu kanalda *ozel (ephemeral)* bildirimlerle gidecek.\n\n" +
           "*Baslik nerden geliyor?* Komutta `|` *oncesi* yazdigin metin bu anketin basligidir (ornek: `/unico-poll Yaz Turnuvasi | 48h` → baslik *Yaz Turnuvasi*). " +
           "`|` *sonrasi* (or. `48h`) sadece *oneri suresi* icindi; kanal mesajinda saat *tarih/saat olarak* son oneri zamani satirinda gorunur, slash ornegi degil.",
@@ -242,88 +226,6 @@ function registerCommands(app) {
       } catch (ackErr) {
         logger.error("Failed to ack /unico-poll error path", { error: ackErr.message });
       }
-    }
-  });
-
-  app.message(async ({ message, client }) => {
-    if (!message || !message.channel) {
-      return;
-    }
-    if (message.subtype && IGNORED_MESSAGE_SUBTYPES.has(message.subtype)) {
-      return;
-    }
-    const userId = message.user || message.user_id;
-    const textRaw = message.text != null ? String(message.text) : "";
-    const trimmed = textRaw.trim();
-    if (!userId || !trimmed || trimmed.startsWith("/")) {
-      return;
-    }
-    try {
-      const poll = pollService.getActivePollInChannel(message.channel);
-      if (!poll || poll.phase !== "suggestion") {
-        return;
-      }
-
-      const parsed = parseSuggestionInput(message.text);
-      if (!parsed) {
-        return;
-      }
-
-      const windowMinutes = Math.max(1, env.suggestionRateLimitWindowMinutes);
-      const limitCount = Math.max(1, env.suggestionRateLimitCount);
-      if (env.suggestionRateLimitCount > 0) {
-        const since = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
-        const recentCount = pollService.getUserSuggestionCountSince({
-          pollId: poll.id,
-          userId,
-          sinceIso: since,
-        });
-        if (recentCount >= limitCount) {
-          logger.warn("Suggestion rate limit hit", {
-            pollId: poll.id,
-            userId,
-            recentCount,
-            limitCount,
-            windowMinutes,
-          });
-          await client.chat.postEphemeral({
-            channel: message.channel,
-            user: userId,
-            text: `Cok hizli oneride bulundun. Lutfen ${windowMinutes} dakika icinde en fazla ${limitCount} oneriyi gecme.`,
-          });
-          return;
-        }
-      }
-
-      const result = pollService.addSuggestion({
-        pollId: poll.id,
-        userId,
-        parsed,
-      });
-
-      if (!result.ok) {
-        await client.chat.postEphemeral({
-          channel: message.channel,
-          user: userId,
-          text:
-            result.reason === "This suggestion already exists."
-              ? "Bu isimde bir oneri zaten var; baska bir isim dene."
-              : result.reason,
-        });
-        return;
-      }
-
-      await client.chat.postEphemeral({
-        channel: message.channel,
-        user: userId,
-        text: `Onerin alindi: *${parsed.displayName}*`,
-      });
-    } catch (error) {
-      logger.error("Suggestion processing failed", {
-        userId: message.user || message.user_id,
-        channelId: message.channel,
-        error: error.message,
-      });
     }
   });
 
@@ -348,6 +250,22 @@ function registerCommands(app) {
       });
       return;
     }
+
+    const maxPerUser = Math.max(0, env.suggestionMaxPerUser);
+    if (maxPerUser > 0) {
+      const used = pollService.getUserSuggestionCount({ pollId: poll.id, userId: uid });
+      if (used >= maxPerUser) {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: uid,
+          text:
+            `Bu ankette en fazla *${maxPerUser}* oneri verebilirsin; limitine ulastin (*${used}/${maxPerUser}*). ` +
+            `Form artik acilmiyor.`,
+        });
+        return;
+      }
+    }
+
     try {
       await client.views.open({
         trigger_id: body.trigger_id,
@@ -358,7 +276,7 @@ function registerCommands(app) {
       await client.chat.postEphemeral({
         channel: channelId,
         user: uid,
-        text: "Form acilamadi. Biraz sonra tekrar dene veya onerini kanalin *ana mesajina* tek satir yaz.",
+        text: "Form acilamadi. Biraz sonra *Oneri gonder (form)* dugmesine tekrar bas.",
       });
     }
   });
@@ -370,7 +288,8 @@ function registerCommands(app) {
       await ack({
         response_action: "errors",
         errors: {
-          suggestion_line: "Bos olamaz. Ornek: Yaz Kampi veya Yaz Kampi : PM ; not",
+          suggestion_line:
+            "Bos olamaz. Ornek: Onerilen Oyun ismi veya Onerilen Oyun ismi : Isminiz ; Varsa notunuz",
         },
       });
       return;
@@ -409,6 +328,20 @@ function registerCommands(app) {
       return;
     }
 
+    const maxPerUser = Math.max(0, env.suggestionMaxPerUser);
+    if (maxPerUser > 0) {
+      const used = pollService.getUserSuggestionCount({ pollId: poll.id, userId: uid });
+      if (used >= maxPerUser) {
+        await ack({
+          response_action: "errors",
+          errors: {
+            suggestion_line: `Limit: bu ankette en fazla ${maxPerUser} oneri (*${used}/${maxPerUser}*).`,
+          },
+        });
+        return;
+      }
+    }
+
     const windowMinutes = Math.max(1, env.suggestionRateLimitWindowMinutes);
     const limitCount = Math.max(1, env.suggestionRateLimitCount);
     if (env.suggestionRateLimitCount > 0) {
@@ -435,10 +368,12 @@ function registerCommands(app) {
       parsed,
     });
     if (!result.ok) {
-      const msg =
-        result.reason === "This suggestion already exists."
-          ? "Bu isimde bir oneri zaten var."
-          : result.reason;
+      let msg = result.reason;
+      if (result.reason === "This suggestion already exists.") {
+        msg = "Bu isimde bir oneri zaten var.";
+      } else if (result.reason === "User suggestion limit reached.") {
+        msg = `Bu ankette en fazla ${maxPerUser || env.suggestionMaxPerUser} oneri verebilirsin.`;
+      }
       await ack({
         response_action: "errors",
         errors: { suggestion_line: msg },
@@ -448,11 +383,14 @@ function registerCommands(app) {
 
     await ack();
     if (replyChannel && uid) {
+      const usedAfter = pollService.getUserSuggestionCount({ pollId: poll.id, userId: uid });
+      const limitHint =
+        maxPerUser > 0 ? ` (*${usedAfter}/${maxPerUser}*)` : "";
       try {
         await client.chat.postEphemeral({
           channel: replyChannel,
           user: uid,
-          text: `Onerin alindi: *${parsed.displayName}*`,
+          text: `Onerin alindi: *${parsed.displayName}*${limitHint}`,
         });
       } catch (err) {
         logger.error("suggestion_submit ephemeral failed", { error: err.message });
