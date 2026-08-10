@@ -3,6 +3,7 @@ const { collectCreatorCandidateIds } = require("../utils/slackActor");
 const { isPastIso } = require("../utils/time");
 const env = require("../config/env");
 const pollService = require("../services/pollService");
+const store = require("../db/store");
 const logger = require("../utils/logger");
 const {
   suggestionAnnouncementBlocks,
@@ -232,10 +233,22 @@ function registerCommands(app) {
   app.action("open_suggestion_modal", async ({ ack, body, client }) => {
     await ack();
     const pollId = body.actions?.[0]?.value;
+    store.reloadStoreFromDisk();
     const poll = pollService.getPollById(pollId);
     const channelId = body.channel?.id;
     const uid = body.user?.id;
-    if (!poll || !channelId || !uid) {
+    if (!channelId || !uid) {
+      return;
+    }
+    if (!poll) {
+      logger.warn("open_suggestion_modal: poll not found (store may have been reset)", { pollId });
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: uid,
+        text:
+          "Bu anket kaydi bulunamadi (bot yeniden baslatilinca Railway'de veri silinmis olabilir). " +
+          "Eski mesajdaki dugmeyi kullanma; yeni anket ac: `/unico-poll Baslik | 1h`",
+      });
       return;
     }
     if (
