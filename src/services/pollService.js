@@ -348,11 +348,15 @@ function revertVotingStart({ pollId, previousPhase }) {
   return getPollById(pollId);
 }
 
+const SUGGESTION_CLOSE_CLAIM_STALE_MS = 15 * 60 * 1000;
+
 /**
  * Tekillestirme: oneri suresi doldu bildirimi (ve faz gecisi) ayni anda birden fazla tetiklenmesin
  * (coklu bot sureci / cron ust uste binmesi).
+ * Stale claims (>15m) can be stolen so a crashed worker does not block forever.
  */
 function tryClaimSuggestionPhaseClose(pollId) {
+  reloadStoreFromDisk();
   const state = getState();
   const idx = state.polls.findIndex((p) => p.id === pollId);
   if (idx === -1) {
@@ -362,8 +366,12 @@ function tryClaimSuggestionPhaseClose(pollId) {
   if (p.phase !== "suggestion" || !p.suggestion_deadline_at || !isPastIso(p.suggestion_deadline_at)) {
     return false;
   }
-  if (p.suggestion_phase_close_claimed_at) {
-    return false;
+  const existing = p.suggestion_phase_close_claimed_at;
+  if (existing) {
+    const t = new Date(existing).getTime();
+    if (Number.isFinite(t) && Date.now() - t < SUGGESTION_CLOSE_CLAIM_STALE_MS) {
+      return false;
+    }
   }
   const ts = nowIso();
   state.polls[idx] = {
@@ -372,7 +380,9 @@ function tryClaimSuggestionPhaseClose(pollId) {
     updated_at: ts,
   };
   persist();
-  return true;
+  reloadStoreFromDisk();
+  const after = getPollById(pollId);
+  return Boolean(after && after.suggestion_phase_close_claimed_at === ts);
 }
 
 function clearSuggestionPhaseCloseClaim(pollId) {

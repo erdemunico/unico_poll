@@ -12,11 +12,24 @@ const logger = require("../utils/logger");
 function registerScheduler(app) {
   let chain = Promise.resolve();
 
-  cron.schedule("*/1 * * * *", () => {
+  const enqueueTick = (reason) => {
     chain = chain
       .then(() => runSchedulerTick(app))
-      .catch((err) => logger.error("Scheduler tick failed", { error: err.message }));
+      .catch((err) =>
+        logger.error("Scheduler tick failed", { reason, error: err.message })
+      );
+  };
+
+  cron.schedule("*/1 * * * *", () => {
+    enqueueTick("cron");
   });
+
+  return {
+    /** Call after app.start() so expired polls recover without waiting for the next cron minute. */
+    runStartupTick() {
+      enqueueTick("startup");
+    },
+  };
 }
 
 async function runSchedulerTick(app) {
