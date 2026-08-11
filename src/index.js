@@ -1,4 +1,4 @@
-const { App } = require("@slack/bolt");
+const { App, SocketModeReceiver } = require("@slack/bolt");
 const env = require("./config/env");
 require("./db/store").getState();
 const { registerCommands } = require("./slack/commands");
@@ -6,11 +6,16 @@ const { registerActions } = require("./slack/actions");
 const { registerScheduler } = require("./services/scheduler");
 const logger = require("./utils/logger");
 
+const receiver = new SocketModeReceiver({
+  appToken: env.slackAppToken,
+  clientPingTimeout: env.socketClientPingTimeoutMs,
+  serverPingTimeout: env.socketServerPingTimeoutMs,
+});
+
 const app = new App({
   token: env.slackBotToken,
   signingSecret: env.slackSigningSecret,
-  socketMode: true,
-  appToken: env.slackAppToken,
+  receiver,
 });
 
 registerCommands(app);
@@ -30,6 +35,9 @@ process.on("unhandledRejection", (reason) => {
 (async () => {
   await app.start(env.port);
   // eslint-disable-next-line no-console
-  console.log(`Unico Poll is running on port ${env.port}`);
+  console.log(
+    `Unico Poll is running on port ${env.port} ` +
+      `(socket ping timeout client=${env.socketClientPingTimeoutMs}ms server=${env.socketServerPingTimeoutMs}ms)`
+  );
   scheduler.runStartupTick();
 })();
