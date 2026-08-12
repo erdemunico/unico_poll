@@ -517,7 +517,7 @@ function votingBlocks({ poll, suggestions }) {
   const isClassic = String(poll.vote_mode || "").trim().toLowerCase() === "classic";
   const isOpenClassic = pollService.isOpenVotePoll(poll);
   const visibilityLine = !isClassic
-    ? "Oy gorunurlugu: *kapali* — puanlama modunda acik oy yok (kanal sismesin diye)."
+    ? "Oy gorunurlugu: *kapali* — puanlama modunda acik oy yok."
     : isOpenClassic
       ? "Oy gorunurlugu: *acik* — oy kullananlar kanalda kisa bir bildirimle gorunur."
       : "Oy gorunurlugu: *kapali* — ara sonuclar gizlidir; yalnizca kendi oyunu gorursun.";
