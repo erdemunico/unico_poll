@@ -6,6 +6,9 @@ const { collectCreatorCandidateIds, primarySlackUserId } = require("../utils/sla
 const {
   buildStartVotingModal,
   buildDirectBallotModal,
+  buildVoteTypeWizardModal,
+  buildVotePrivacyWizardModal,
+  buildVoteDurationWizardModal,
   votingBlocks,
   votingClosedBlocks,
   buildClassicVoteModal,
@@ -204,6 +207,157 @@ function votePrivacyFromModalState(st, mode) {
   return String(raw).trim().toLowerCase();
 }
 
+function serializeShortlistOrdered(ordered) {
+  return ordered.map((item) =>
+    item.type === "pick" ? { t: "p", id: item.id } : { t: "m", text: item.text, slot: item.slot }
+  );
+}
+
+async function finalizeStartVotingFromWizard({ client, body, wizard, hours, actingIds }) {
+  const poll = pollService.getPollById(wizard.pollId);
+  const uid = body.user?.id;
+  const mode = wizard.voteMode;
+  const openVote = mode === "classic" && wizard.privacy === "open";
+  const channelFallback = wizard.channelId || poll?.channel_id;
+
+  if (!poll || !pollService.pollManagedByAnyOf(poll, actingIds)) {
+    await safePostEphemeral(client, {
+      channelId: channelFallback,
+      user: uid,
+      text: !poll ? "Anket bulunamadi." : "Bu islemi yalnizca anketi baslatan kullanici yapabilir.",
+    });
+    return;
+  }
+
+  if (poll.phase === "voting") {
+    await safePostEphemeral(client, {
+      channelId: poll.channel_id,
+      user: uid,
+      text:
+        "*Oylama zaten baslamis.* Kanalda son oylama mesajina bakabilirsin. Cift tiklama yaptiysan ekstra bir sey yapmana gerek yok.",
+    });
+    return;
+  }
+
+  if (wizard.flow === "direct") {
+    if (poll.phase === "closed") {
+      await safePostEphemeral(client, {
+        channelId: poll.channel_id,
+        user: uid,
+        text:
+          "Bu anket *iptal edilmis*. Acik modal gecersiz; girdigin isimler kaydedilmedi. " +
+          "Yeni anket: `/unico-poll Baslik | direkt` — yalnizca *yeni* DM veya kanal kurulum mesajindaki dugmeyi kullan.",
+      });
+      return;
+    }
+    if (poll.phase !== "ballot_setup") {
+      await safePostEphemeral(client, {
+        channelId: poll.channel_id,
+        user: uid,
+        text:
+          "Bu modali bu ankette simdi kullanamazsin (faz degismis). " +
+          "Iptal ettiysen yeni `/unico-poll ... | direkt` ile ac ve *en son* DM veya kanal kurulum mesajindaki dugmeyi kullan.",
+      });
+      return;
+    }
+  } else if (!["suggestion", "ready_for_voting"].includes(poll.phase)) {
+    await safePostEphemeral(client, {
+      channelId: poll.channel_id,
+      user: uid,
+      text: "Bu anket su an bu akisla oylama baslatamaz.",
+    });
+    return;
+  }
+
+  const previousPhase = poll.phase;
+  let updatedPoll;
+  let shortlist;
+
+  try {
+    if (wizard.flow === "direct") {
+      pollService.replacePollSuggestionsFromLines({
+        pollId: poll.id,
+        actingSlackUserIds: actingIds,
+        lines: wizard.lines,
+      });
+      const suggestions = pollService.listSuggestions(poll.id);
+      pollService.saveShortlist({
+        pollId: poll.id,
+        suggestionIds: suggestions.map((s) => s.id),
+      });
+    } else {
+      const finalIds = [];
+      for (const item of wizard.ordered || []) {
+        if (item.t === "p") {
+          finalIds.push(item.id);
+          continue;
+        }
+        const newId = pollService.appendCreatorShortlistLine({
+          pollId: poll.id,
+          actingSlackUserIds: actingIds,
+          line: item.text,
+        });
+        if (!newId) {
+          throw new Error(
+            "Gecersiz metin. Ornek: Onerilen Oyun ismi veya Onerilen Oyun ismi : Isminiz ; Varsa notunuz"
+          );
+        }
+        finalIds.push(newId);
+      }
+      const deduped = [...new Set(finalIds)].slice(0, pollService.MAX_OPTIONS);
+      if (deduped.length < 2) {
+        throw new Error("At least 2 suggestions are required to start voting.");
+      }
+      pollService.saveShortlist({ pollId: poll.id, suggestionIds: deduped });
+    }
+
+    updatedPoll = pollService.startVoting({
+      pollId: poll.id,
+      voteMode: mode,
+      isOpenVote: openVote,
+      votingHours: hours,
+    });
+    shortlist = pollService.getShortlistedSuggestions(poll.id);
+  } catch (error) {
+    logger.error("Failed to start voting from wizard", {
+      pollId: poll.id,
+      flow: wizard.flow,
+      userId: uid,
+      error: error.message,
+    });
+    await safePostEphemeral(client, {
+      channelId: poll.channel_id,
+      user: uid,
+      text: describeVotingStartFailure(error.message),
+    });
+    return;
+  }
+
+  try {
+    await postChannelVotingMessage(client, { poll: updatedPoll, suggestions: shortlist });
+  } catch (error) {
+    pollService.revertVotingStart({ pollId: poll.id, previousPhase });
+    logger.error("Failed wizard start postMessage", {
+      pollId: poll.id,
+      flow: wizard.flow,
+      userId: uid,
+      error: error.message,
+    });
+    const retryHint =
+      wizard.flow === "direct"
+        ? "DM veya kanalda *Secenekleri gir* dugmesinden tekrar dene."
+        : "*Oylama listesini sec* (veya yonetici bildirimindeki ayni akisi acan dugme) uzerinden tekrar dene.";
+    await safePostEphemeral(client, {
+      channelId: poll.channel_id,
+      user: uid,
+      text:
+        `*Oylama kaydi acildi* fakat *kanala duyuru atilamadi*: _${slackErrorDetail(error)}_. ` +
+        `Anket *oylama oncesi* fazina geri alindi; oylamayi baslatmayi ${retryHint} ` +
+        "Botu kanala davet et ve `chat:write` / `chat:write.public` izinlerini kontrol et.",
+    });
+  }
+}
+
 function slackErrorDetail(err) {
   if (!err) {
     return "bilinmeyen hata";
@@ -360,7 +514,7 @@ function registerActions(app) {
   app.action(/^slot_mode_\d+_select$/, async ({ ack, body, client }) => {
     await ack();
     const view = body.view;
-    if (!view || view.callback_id !== "start_voting_submit") {
+    if (!view || view.callback_id !== "start_voting_shortlist") {
       return;
     }
     const meta = parseMetadata(view.private_metadata);
@@ -381,44 +535,6 @@ function registerActions(app) {
       });
     } catch (error) {
       logger.error("start_voting modal views.update failed", { pollId: meta.pollId, error: error.message });
-    }
-  });
-
-  app.action("vote_mode_select", async ({ ack, body, client }) => {
-    await ack();
-    const view = body.view;
-    if (!view || !["start_voting_submit", "direct_ballot_submit"].includes(view.callback_id)) {
-      return;
-    }
-    const meta = parseMetadata(view.private_metadata);
-    const poll = pollService.getPollById(meta.pollId);
-    if (!poll || !pollService.pollManagedByAnyOf(poll, collectCreatorCandidateIds(body))) {
-      return;
-    }
-    try {
-      if (view.callback_id === "start_voting_submit") {
-        const suggestions = pollService.listSuggestions(poll.id);
-        await client.views.update({
-          view_id: view.id,
-          hash: view.hash,
-          view: buildStartVotingModal({
-            poll,
-            suggestions,
-            preservedValues: view.state.values,
-          }),
-        });
-      } else {
-        await client.views.update({
-          view_id: view.id,
-          hash: view.hash,
-          view: buildDirectBallotModal({
-            poll,
-            preservedValues: view.state.values,
-          }),
-        });
-      }
-    } catch (error) {
-      logger.error("vote_mode modal views.update failed", { pollId: meta.pollId, error: error.message });
     }
   });
 
@@ -488,290 +604,126 @@ function registerActions(app) {
     }
   });
 
-  app.view("direct_ballot_submit", async ({ ack, body, view, client }) => {
+  app.view("direct_ballot_options", async ({ ack, body, view, client }) => {
     const collected = collectDirectBallotOptionLines(view);
     if (!collected.ok) {
-      await ack({
-        response_action: "errors",
-        errors: collected.errors,
-      });
+      await ack({ response_action: "errors", errors: collected.errors });
       return;
     }
-    const lines = collected.lines;
-
-    const st = view.state.values;
-    const mode = st.vote_mode?.vote_mode_select?.selected_option?.value;
-    const privacy = votePrivacyFromModalState(st, mode);
-    if (!mode) {
-      await ack({
-        response_action: "errors",
-        errors: { vote_mode: "Oylama turunu sec." },
-      });
-      return;
-    }
-    const hours = Number.parseInt(st.vote_duration?.vote_duration_input?.value, 10) || env.defaultVotingHours;
-    if (mode === "classic" && !privacy) {
-      await ack({
-        response_action: "errors",
-        errors: {
-          vote_privacy: "Oy gorunurlugunu listeden sec (Acik veya Kapali).",
-        },
-      });
-      return;
-    }
-    const openVote = mode === "classic" && privacy === "open";
-
-    await ack();
     const meta = parseMetadata(view.private_metadata);
-    const channelId = metadataChannelId(meta);
     const poll = pollService.getPollById(meta.pollId);
-    const replyCh = channelId || poll?.channel_id;
-
-    if (!poll) {
-      await safePostEphemeral(client, {
-        channelId: replyCh,
-        user: body.user.id,
-        text: "Anket bulunamadi veya silinmis.",
-      });
+    if (!poll || !pollService.pollManagedByAnyOf(poll, collectCreatorCandidateIds(body))) {
+      await ack();
       return;
     }
-    if (!pollService.pollManagedByAnyOf(poll, collectCreatorCandidateIds(body))) {
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: body.user.id,
-        text: "Bu islemi yalnizca anketi baslatan kullanici yapabilir.",
-      });
-      return;
-    }
-    if (poll.phase === "closed") {
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: body.user.id,
-        text:
-          "Bu anket *iptal edilmis*. Acik modal gecersiz; girdigin isimler kaydedilmedi. " +
-          "Yeni anket: `/unico-poll Baslik | direkt` — yalnizca *yeni* DM veya kanal kurulum mesajindaki dugmeyi kullan.",
-      });
-      return;
-    }
-    if (poll.phase === "voting") {
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: body.user.id,
-        text:
-          "*Oylama zaten baslamis.* Kanalda son oylama mesajina bakabilirsin. Cift tiklama yaptiysan ekstra bir sey yapmana gerek yok.",
-      });
-      return;
-    }
-    if (poll.phase !== "ballot_setup") {
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: body.user.id,
-        text:
-          "Bu modali bu ankette simdi kullanamazsin (faz degismis). " +
-          "Iptal ettiysen yeni `/unico-poll ... | direkt` ile ac ve *en son* DM veya kanal kurulum mesajindaki dugmeyi kullan.",
-      });
-      return;
-    }
-
-    const previousPhase = poll.phase;
-
-    let updatedPoll;
-    let shortlist;
-    try {
-      pollService.replacePollSuggestionsFromLines({
-        pollId: poll.id,
-        actingSlackUserIds: collectCreatorCandidateIds(body),
-        lines,
-      });
-      const suggestions = pollService.listSuggestions(poll.id);
-      pollService.saveShortlist({
-        pollId: poll.id,
-        suggestionIds: suggestions.map((s) => s.id),
-      });
-      updatedPoll = pollService.startVoting({
-        pollId: poll.id,
-        voteMode: mode,
-        isOpenVote: openVote,
-        votingHours: hours,
-      });
-      shortlist = pollService.getShortlistedSuggestions(poll.id);
-    } catch (error) {
-      logger.error("Failed direct ballot start (data)", {
-        pollId: meta.pollId,
-        userId: body.user.id,
-        error: error.message,
-      });
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: body.user.id,
-        text: describeVotingStartFailure(error.message),
-      });
-      return;
-    }
-
-    try {
-      await postChannelVotingMessage(client, { poll: updatedPoll, suggestions: shortlist });
-    } catch (error) {
-      pollService.revertVotingStart({ pollId: poll.id, previousPhase });
-      logger.error("Failed direct ballot postMessage", {
-        pollId: poll.id,
-        userId: body.user.id,
-        error: error.message,
-      });
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: body.user.id,
-        text:
-          `*Oylama kaydi acildi* (oylar toplanabilir) fakat *kanala duyuru atilamadi*: _${slackErrorDetail(error)}_. ` +
-          `Anket *yeniden secenek girme* fazina alindi; DM veya kanalda *Secenekleri gir* dugmesinden tekrar dene. ` +
-          `Botu kanala \`/invite @bot\` ile ekle ve Slack uygulamasinda \`chat:write\` / \`chat:write.public\` izinlerini kontrol et.`,
-      });
-    }
+    const wizardMeta = {
+      pollId: poll.id,
+      channelId: metadataChannelId(meta) || poll.channel_id,
+      flow: "direct",
+      lines: collected.lines,
+    };
+    await ack({
+      response_action: "update",
+      view: buildVoteTypeWizardModal({ poll, wizardMeta }),
+    });
   });
 
-  app.view("start_voting_submit", async ({ ack, body, view, client }) => {
+  app.view("start_voting_shortlist", async ({ ack, body, view, client }) => {
     const meta = parseMetadata(view.private_metadata);
-    const channelFallback = metadataChannelId(meta);
     const poll = pollService.getPollById(meta.pollId);
     const actingIds = collectCreatorCandidateIds(body);
-    const uid = body.user?.id;
-
     if (!poll || !pollService.pollManagedByAnyOf(poll, actingIds)) {
       await ack();
-      await safePostEphemeral(client, {
-        channelId: channelFallback || poll?.channel_id,
-        user: uid,
-        text: !poll ? "Anket bulunamadi." : "Bu islemi yalnizca anketi baslatan kullanici yapabilir.",
-      });
       return;
     }
-
-    if (poll.phase === "voting") {
-      await ack();
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: uid,
-        text:
-          "*Oylama zaten baslamis.* Kanalda son oylama mesajina bakabilirsin. Cift tiklama yaptiysan ekstra bir sey yapmana gerek yok.",
-      });
-      return;
-    }
-
-    if (!["suggestion", "ready_for_voting"].includes(poll.phase)) {
-      await ack();
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: uid,
-        text: "Bu anket su an bu modali kullanarak oylama baslatamaz.",
-      });
-      return;
-    }
-
-    const st = view.state.values;
-    const mode = st.vote_mode?.vote_mode_select?.selected_option?.value;
-    const privacy = votePrivacyFromModalState(st, mode);
-    const hours = Number.parseInt(st.vote_duration?.vote_duration_input?.value, 10) || env.defaultVotingHours;
-    if (!mode) {
-      await ack({
-        response_action: "errors",
-        errors: { vote_mode: "Oylama turunu sec." },
-      });
-      return;
-    }
-    if (mode === "classic" && !privacy) {
-      await ack({
-        response_action: "errors",
-        errors: {
-          vote_privacy: "Oy gorunurlugunu listeden sec (Acik veya Kapali).",
-        },
-      });
-      return;
-    }
-    const openVote = mode === "classic" && privacy === "open";
 
     const allSuggestions = pollService.listSuggestions(poll.id);
-    const slotParse = parseShortlistSlotsFromView(st, allSuggestions);
+    const slotParse = parseShortlistSlotsFromView(view.state.values, allSuggestions);
     if (!slotParse.ok) {
       await ack({ response_action: "errors", errors: slotParse.errors });
       return;
     }
 
-    const finalIds = [];
-    for (const item of slotParse.ordered) {
-      if (item.type === "pick") {
-        finalIds.push(item.id);
-      } else {
-        const newId = pollService.appendCreatorShortlistLine({
-          pollId: poll.id,
-          actingSlackUserIds: actingIds,
-          line: item.text,
-        });
-        if (!newId) {
-          await ack({
-            response_action: "errors",
-            errors: {
-              [`slot_text_${item.slot}`]:
-                "Gecersiz metin. Ornek: Onerilen Oyun ismi veya Onerilen Oyun ismi : Isminiz ; Varsa notunuz",
-            },
-          });
-          return;
-        }
-        finalIds.push(newId);
-      }
-    }
+    const wizardMeta = {
+      pollId: poll.id,
+      channelId: metadataChannelId(meta) || poll.channel_id,
+      flow: "shortlist",
+      ordered: serializeShortlistOrdered(slotParse.ordered),
+    };
+    await ack({
+      response_action: "update",
+      view: buildVoteTypeWizardModal({ poll, wizardMeta }),
+    });
+  });
 
-    const deduped = [...new Set(finalIds)].slice(0, pollService.MAX_OPTIONS);
-    if (deduped.length < 2) {
+  app.view("voting_wizard_type", async ({ ack, body, view, client }) => {
+    const wizard = parseMetadata(view.private_metadata);
+    const poll = pollService.getPollById(wizard.pollId);
+    const mode = view.state.values.vote_mode?.vote_mode_select?.selected_option?.value;
+    if (!poll || !mode) {
       await ack({
         response_action: "errors",
-        errors: { slot_pick_1: "En az 2 gecerli secenek (sec veya yaz) gerekir." },
+        errors: { vote_mode: "Oylama turunu sec." },
       });
       return;
     }
+    const next = { ...wizard, voteMode: mode };
+    if (mode === "classic") {
+      await ack({
+        response_action: "update",
+        view: buildVotePrivacyWizardModal({ poll, wizardMeta: next }),
+      });
+      return;
+    }
+    await ack({
+      response_action: "update",
+      view: buildVoteDurationWizardModal({
+        poll,
+        wizardMeta: { ...next, privacy: "closed" },
+      }),
+    });
+  });
 
-    const previousPhase = poll.phase;
-    pollService.saveShortlist({ pollId: poll.id, suggestionIds: deduped });
+  app.view("voting_wizard_privacy", async ({ ack, body, view, client }) => {
+    const wizard = parseMetadata(view.private_metadata);
+    const poll = pollService.getPollById(wizard.pollId);
+    const privacy = votePrivacyFromModalState(view.state.values, "classic");
+    if (!poll || !privacy) {
+      await ack({
+        response_action: "errors",
+        errors: { vote_privacy: "Oy gorunurlugunu listeden sec (Acik veya Kapali)." },
+      });
+      return;
+    }
+    await ack({
+      response_action: "update",
+      view: buildVoteDurationWizardModal({
+        poll,
+        wizardMeta: { ...wizard, privacy },
+      }),
+    });
+  });
 
+  app.view("voting_wizard_duration", async ({ ack, body, view, client }) => {
+    const wizard = parseMetadata(view.private_metadata);
+    const hours =
+      Number.parseInt(view.state.values.vote_duration?.vote_duration_input?.value, 10) ||
+      env.defaultVotingHours;
+    if (!Number.isFinite(hours) || hours < 1 || hours > 336) {
+      await ack({
+        response_action: "errors",
+        errors: { vote_duration: "1 ile 336 saat arasi bir deger gir." },
+      });
+      return;
+    }
     await ack();
-
-    let updatedPoll;
-    let shortlist;
-    try {
-      updatedPoll = pollService.startVoting({
-        pollId: poll.id,
-        voteMode: mode,
-        isOpenVote: openVote,
-        votingHours: hours,
-      });
-      shortlist = pollService.getShortlistedSuggestions(poll.id);
-    } catch (error) {
-      logger.error("Failed to start voting (data)", { pollId: poll.id, userId: uid, error: error.message });
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: uid,
-        text: describeVotingStartFailure(error.message),
-      });
-      return;
-    }
-
-    try {
-      await postChannelVotingMessage(client, { poll: updatedPoll, suggestions: shortlist });
-    } catch (error) {
-      pollService.revertVotingStart({ pollId: poll.id, previousPhase });
-      logger.error("Failed start_voting postMessage", {
-        pollId: poll.id,
-        userId: uid,
-        error: error.message,
-      });
-      await safePostEphemeral(client, {
-        channelId: poll.channel_id,
-        user: uid,
-        text:
-          `*Oylama kaydi acildi* fakat *kanala duyuru atilamadi*: _${slackErrorDetail(error)}_. ` +
-          `Anket *oylama oncesi* fazina geri alindi; oylamayi baslatmayi *Oylama listesini sec* (veya yonetici bildirimindeki ayni akisi acan dugme) uzerinden tekrar dene. ` +
-          `Botu kanala davet et ve \`chat:write\` / \`chat:write.public\` izinlerini kontrol et.`,
-      });
-    }
+    await finalizeStartVotingFromWizard({
+      client,
+      body,
+      wizard,
+      hours,
+      actingIds: collectCreatorCandidateIds(body),
+    });
   });
 
   app.action(/^classic_vote__/, async ({ ack, body, client }) => {

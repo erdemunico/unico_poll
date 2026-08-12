@@ -214,7 +214,6 @@ function directPollChannelBlocks(poll) {
 
 function buildDirectBallotModal({ poll, preservedValues = null }) {
   const st = preservedValues || {};
-  const voteMode = voteModeFromPreserved(st);
   const intro = {
     type: "section",
     text: {
@@ -245,68 +244,13 @@ function buildDirectBallotModal({ poll, preservedValues = null }) {
   }
 
   const blocks = [intro, ...optionInputs];
-  blocks.push({
-    type: "input",
-    dispatch_action: true,
-    block_id: "vote_mode",
-    label: { type: "plain_text", text: "Oylama Turu" },
-    element: {
-      type: "static_select",
-      action_id: "vote_mode_select",
-      options: [
-        { text: { type: "plain_text", text: "Klasik (tek oy)" }, value: "classic" },
-        { text: { type: "plain_text", text: "Puanlama (1-5)" }, value: "rating" },
-      ],
-      initial_option:
-        st.vote_mode?.vote_mode_select?.selected_option ||
-        ({ text: { type: "plain_text", text: "Klasik (tek oy)" }, value: "classic" }),
-    },
-  });
-  if (voteMode === "rating") {
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: "_Puanlamada oy gorunurlugu yalnizca *kapali*dir (her secenek icin ayri puan; kanalda acik oy secenegi yok)._",
-        },
-      ],
-    });
-  } else {
-    blocks.push({
-      type: "input",
-      block_id: "vote_privacy",
-      label: { type: "plain_text", text: "Oy Gorunurlugu" },
-      element: {
-        type: "static_select",
-        action_id: "vote_privacy_select",
-        options: [
-          { text: { type: "plain_text", text: "Kapali (anonim - varsayilan)" }, value: "closed" },
-          { text: { type: "plain_text", text: "Acik (kullanici secimi gorunebilir)" }, value: "open" },
-        ],
-        initial_option:
-          st.vote_privacy?.vote_privacy_select?.selected_option ||
-          ({ text: { type: "plain_text", text: "Kapali (anonim - varsayilan)" }, value: "closed" }),
-      },
-    });
-  }
-  blocks.push({
-    type: "input",
-    block_id: "vote_duration",
-    label: { type: "plain_text", text: "Oylama Suresi (saat)" },
-    element: {
-      type: "plain_text_input",
-      action_id: "vote_duration_input",
-      initial_value: String(st.vote_duration?.vote_duration_input?.value || "48").trim() || "48",
-    },
-  });
 
   return {
     type: "modal",
-    callback_id: "direct_ballot_submit",
-    private_metadata: JSON.stringify({ pollId: poll.id, channelId: poll.channel_id }),
-    title: { type: "plain_text", text: "Direkt oylama" },
-    submit: { type: "plain_text", text: "Oylamayi baslat" },
+    callback_id: "direct_ballot_options",
+    private_metadata: JSON.stringify({ pollId: poll.id, channelId: poll.channel_id, flow: "direct" }),
+    title: { type: "plain_text", text: "Adim 1 — Secenekler" },
+    submit: { type: "plain_text", text: "Devam" },
     close: { type: "plain_text", text: "Iptal" },
     blocks,
   };
@@ -321,8 +265,8 @@ function creatorSuggestionControlBlocks(poll, suggestions, maxOptions) {
         type: "mrkdwn",
         text:
           `*${poll.title}* — oneri toplama suresi bitti.\n` +
-          `Asagida toplanan oneriler listelenir. *Oylama listesini sec* ile acilan ekranda *10 siraya* kadar: ` +
-          `onerilerden secim ve/veya *yeni secenek metni* girebilirsin (en az 2 secenek).`,
+          `Asagida toplanan oneriler listelenir. *Oylama listesini sec* ile once oylama listesi, ` +
+          `sonra sirasiyla *oylama turu*, *oy gorunurlugu* (klasik) ve *oylama suresi* adimlari gelir.`,
       },
     },
     {
@@ -443,72 +387,129 @@ function buildStartVotingModal({ poll, suggestions, preservedValues = null }) {
     }
   }
 
-  const footerVoteMode = voteModeFromPreserved(st);
-
-  blocks.push({
-    type: "input",
-    dispatch_action: true,
-    block_id: "vote_mode",
-    label: { type: "plain_text", text: "Oylama Turu" },
-    element: {
-      type: "static_select",
-      action_id: "vote_mode_select",
-      options: [
-        { text: { type: "plain_text", text: "Klasik (tek oy)" }, value: "classic" },
-        { text: { type: "plain_text", text: "Puanlama (1-5)" }, value: "rating" },
-      ],
-      initial_option:
-        st.vote_mode?.vote_mode_select?.selected_option ||
-        ({ text: { type: "plain_text", text: "Klasik (tek oy)" }, value: "classic" }),
-    },
-  });
-  if (footerVoteMode === "rating") {
-    blocks.push({
-      type: "context",
-      elements: [
-        {
-          type: "mrkdwn",
-          text: "_Puanlamada oy gorunurlugu yalnizca *kapali*dir (kanalda acik oy secenegi yok)._",
-        },
-      ],
-    });
-  } else {
-    blocks.push({
-      type: "input",
-      block_id: "vote_privacy",
-      label: { type: "plain_text", text: "Oy Gorunurlugu" },
-      element: {
-        type: "static_select",
-        action_id: "vote_privacy_select",
-        options: [
-          { text: { type: "plain_text", text: "Kapali (anonim - varsayilan)" }, value: "closed" },
-          { text: { type: "plain_text", text: "Acik (kullanici secimi gorunebilir)" }, value: "open" },
-        ],
-        initial_option:
-          st.vote_privacy?.vote_privacy_select?.selected_option ||
-          ({ text: { type: "plain_text", text: "Kapali (anonim - varsayilan)" }, value: "closed" }),
-      },
-    });
-  }
-  blocks.push({
-    type: "input",
-    block_id: "vote_duration",
-    label: { type: "plain_text", text: "Oylama Suresi (saat)" },
-    element: {
-      type: "plain_text_input",
-      action_id: "vote_duration_input",
-      initial_value: String(st.vote_duration?.vote_duration_input?.value || "48").trim() || "48",
-    },
-  });
-
   return {
     type: "modal",
-    callback_id: "start_voting_submit",
+    callback_id: "start_voting_shortlist",
     private_metadata: JSON.stringify({ pollId: poll.id, channelId: poll.channel_id }),
-    title: { type: "plain_text", text: "Unico Poll" },
-    submit: { type: "plain_text", text: "Oylamayi Baslat" },
+    title: { type: "plain_text", text: "Adim 1 — Oylama listesi" },
+    submit: { type: "plain_text", text: "Devam" },
     close: { type: "plain_text", text: "Iptal" },
     blocks,
+  };
+}
+
+function buildVoteTypeWizardModal({ poll, wizardMeta }) {
+  return {
+    type: "modal",
+    callback_id: "voting_wizard_type",
+    private_metadata: JSON.stringify(wizardMeta),
+    title: { type: "plain_text", text: "Adim 2 — Oylama turu" },
+    submit: { type: "plain_text", text: "Devam" },
+    close: { type: "plain_text", text: "Iptal" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*${poll.title}*\n` +
+            "Oylama turunu sec. Sonraki adimda (klasik secersen) oy gorunurlugu, en sonda oylama suresi sorulur.",
+        },
+      },
+      {
+        type: "input",
+        block_id: "vote_mode",
+        label: { type: "plain_text", text: "Oylama Turu" },
+        element: {
+          type: "static_select",
+          action_id: "vote_mode_select",
+          options: [
+            { text: { type: "plain_text", text: "Klasik (tek oy)" }, value: "classic" },
+            { text: { type: "plain_text", text: "Puanlama (1-5)" }, value: "rating" },
+          ],
+          initial_option: { text: { type: "plain_text", text: "Klasik (tek oy)" }, value: "classic" },
+        },
+      },
+    ],
+  };
+}
+
+function buildVotePrivacyWizardModal({ poll, wizardMeta }) {
+  return {
+    type: "modal",
+    callback_id: "voting_wizard_privacy",
+    private_metadata: JSON.stringify(wizardMeta),
+    title: { type: "plain_text", text: "Adim 3 — Oy gorunurlugu" },
+    submit: { type: "plain_text", text: "Devam" },
+    close: { type: "plain_text", text: "Iptal" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*${poll.title}* — *klasik oylama*\n` +
+            "*Kapali:* ara sonuclar gizli, yalniz kendi oyunu gorursun.\n" +
+            "*Acik:* oy kullananlar kanalda kisa bildirimle gorunur.",
+        },
+      },
+      {
+        type: "input",
+        block_id: "vote_privacy",
+        label: { type: "plain_text", text: "Oy Gorunurlugu" },
+        element: {
+          type: "static_select",
+          action_id: "vote_privacy_select",
+          options: [
+            { text: { type: "plain_text", text: "Kapali (anonim - varsayilan)" }, value: "closed" },
+            { text: { type: "plain_text", text: "Acik (kullanici secimi gorunebilir)" }, value: "open" },
+          ],
+          initial_option: {
+            text: { type: "plain_text", text: "Kapali (anonim - varsayilan)" },
+            value: "closed",
+          },
+        },
+      },
+    ],
+  };
+}
+
+function buildVoteDurationWizardModal({ poll, wizardMeta }) {
+  const isRating = String(wizardMeta.voteMode || "").trim().toLowerCase() === "rating";
+  const stepLabel = isRating ? "Adim 3" : "Adim 4";
+  return {
+    type: "modal",
+    callback_id: "voting_wizard_duration",
+    private_metadata: JSON.stringify(wizardMeta),
+    title: { type: "plain_text", text: `${stepLabel} — Oylama suresi` },
+    submit: { type: "plain_text", text: "Oylamayi Baslat" },
+    close: { type: "plain_text", text: "Iptal" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*${poll.title}*\n` +
+            (isRating
+              ? "Puanlama modunda oy gorunurlugu *kapali*dir."
+              : wizardMeta.privacy === "open"
+                ? "Secim: *acik oy* (kanalda bildirim)."
+                : "Secim: *kapali oy* (anonim).") +
+            `\nOylama kac saat acik kalsin?`,
+        },
+      },
+      {
+        type: "input",
+        block_id: "vote_duration",
+        label: { type: "plain_text", text: "Oylama Suresi (saat)" },
+        element: {
+          type: "plain_text_input",
+          action_id: "vote_duration_input",
+          initial_value: String(env.defaultVotingHours),
+        },
+      },
+    ],
   };
 }
 
@@ -769,8 +770,10 @@ module.exports = {
   directPollCreatorFallbackChannelBlocks,
   buildDirectBallotModal,
   buildSuggestionModal,
+  buildVoteTypeWizardModal,
+  buildVotePrivacyWizardModal,
+  buildVoteDurationWizardModal,
   creatorSuggestionControlBlocks,
-  buildStartVotingModal,
   votingBlocks,
   votingClosedBlocks,
   buildClassicVoteModal,
