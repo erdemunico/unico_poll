@@ -87,6 +87,7 @@ function registerCommands(app) {
       }
 
       if (isCancelCommandText(command.text)) {
+        store.reloadStoreFromDisk();
         const cancelResult = pollService.cancelActivePollInChannel({
           channelId,
           actingSlackUserIds,
@@ -95,7 +96,9 @@ function registerCommands(app) {
           const msg =
             cancelResult.reason === "not_creator"
               ? "Bu kanaldaki aktif anketi yalnizca onu baslatan kullanici kapatabilir. Komut: `/unico-poll iptal`"
-              : "Bu kanalda kapatilacak aktif anket yok.";
+              : "Bu kanalda kapatilacak *aktif anket kaydi* yok. " +
+                "Kanalda eski \"oylama acik\" mesaji kalmis olabilir (Railway redeploy sonrasi veri silinince mesaj guncellenmez). " +
+                "Yeni anket acabilirsin; eski mesajdaki dugmelere basma.";
           await safeAck({
             response_type: "ephemeral",
             text: msg,
@@ -106,6 +109,15 @@ function registerCommands(app) {
           response_type: "ephemeral",
           text: `*${cancelResult.poll.title}* anketi kapatildi. Yeni anket acabilirsin.`,
         });
+        try {
+          const { refreshVotingChannelMessageClosed } = require("./actions");
+          await refreshVotingChannelMessageClosed(client, cancelResult.poll.id);
+        } catch (err) {
+          logger.warn("Cancel: could not refresh voting channel message", {
+            pollId: cancelResult.poll.id,
+            error: err.message,
+          });
+        }
         logger.info("Poll cancelled via command", { pollId: cancelResult.poll.id, channelId, userId: creatorId });
         return;
       }
