@@ -533,28 +533,21 @@ function votingBlocks({ poll, suggestions }) {
   ];
 
   if (isClassic) {
-    // Slack: action_id must be unique within the whole message (duplicate -> invalid_blocks).
-    blocks.push({
-      type: "actions",
-      block_id: `classic_vote_${poll.id}`,
-      elements: suggestions.slice(0, 5).map((s) => ({
-        type: "button",
-        text: { type: "plain_text", text: s.display_name.slice(0, 75) },
-        action_id: `classic_vote__${poll.id}__${s.id}`,
-        value: JSON.stringify({ pollId: poll.id, suggestionId: s.id }),
-      })),
-    });
-    if (suggestions.length > 5) {
+    // Slack: max 5 buttons per actions block; action_id must be unique in the message.
+    // Chunk so all shortlist options (up to MAX_OPTIONS) appear as buttons, not only the first 5.
+    const chunkSize = 5;
+    for (let i = 0; i < suggestions.length; i += chunkSize) {
+      const chunk = suggestions.slice(i, i + chunkSize);
+      const chunkIndex = Math.floor(i / chunkSize);
       blocks.push({
-        type: "section",
-        text: { type: "mrkdwn", text: "_Tum secenekler icin acilan modal ekranini kullanin._" },
-        accessory: {
+        type: "actions",
+        block_id: `classic_vote_${poll.id}_${chunkIndex}`,
+        elements: chunk.map((s) => ({
           type: "button",
-          text: { type: "plain_text", text: "Tum Secenekleri Ac" },
-          action_id: "open_classic_vote_modal",
-          value: poll.id,
-          style: "primary",
-        },
+          text: { type: "plain_text", text: s.display_name.slice(0, 75) },
+          action_id: `classic_vote__${poll.id}__${s.id}`,
+          value: JSON.stringify({ pollId: poll.id, suggestionId: s.id }),
+        })),
       });
     }
   } else {
