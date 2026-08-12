@@ -84,6 +84,12 @@ const env = {
   defaultRunoffHours: toInt(process.env.DEFAULT_RUNOFF_HOURS, 24),
   fastTestMode: String(process.env.FAST_TEST_MODE || "false").toLowerCase() === "true",
   fastTestMinutes: toInt(process.env.FAST_TEST_MINUTES, 5),
+  /**
+   * Socket Mode: wait this long for a pong before treating the socket as dead.
+   * Slack SDK default is 5000ms; on Railway/high-latency that causes noisy reconnects.
+   */
+  socketClientPingTimeoutMs: Math.max(5000, toInt(process.env.SOCKET_CLIENT_PING_TIMEOUT_MS, 15000)),
+  socketServerPingTimeoutMs: Math.max(5000, toInt(process.env.SOCKET_SERVER_PING_TIMEOUT_MS, 30000)),
   allowedCreatorIds: String(process.env.ALLOWED_CREATOR_IDS || "")
     .split(",")
     .map((id) => id.trim())
