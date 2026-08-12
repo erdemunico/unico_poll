@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Unico Poll — Kullanım Kılavuzu</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm 20mm 16mm;
+    }
+
+    :root {
+      --ink: #1a1d21;
+      --muted: #5c6670;
+      --line: #e8ecf0;
+      --brand: #1264a3;
+      --brand-soft: #e8f4fd;
+      --accent: #2eb67d;
+      --accent-soft: #e8f8f0;
+      --warn-soft: #fff8e6;
+      --warn-border: #f2c744;
+      --card: #f8fafc;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.55;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .cover {
+      page-break-after: always;
+      min-height: 250mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 12mm 0;
+      border-bottom: 6px solid var(--brand);
+    }
+
+    .cover-badge {
+      display: inline-block;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 9pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-radius: 999px;
+      margin-bottom: 18px;
+    }
+
+    .cover h1 {
+      font-size: 34pt;
+      line-height: 1.1;
+      margin: 0 0 12px;
+      letter-spacing: -0.02em;
+    }
+
+    .cover .subtitle {
+      font-size: 14pt;
+      color: var(--muted);
+      max-width: 85%;
+      margin-bottom: 28px;
+    }
+
+    .cover-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      max-width: 420px;
+      margin-top: 24px;
+    }
+
+    .cover-meta div {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+
+    .cover-meta strong {
+      display: block;
+      font-size: 8.5pt;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 4px;
+    }
+
+    section {
+      page-break-inside: avoid;
+      margin-bottom: 18px;
+    }
+
+    h2 {
+      font-size: 16pt;
+      color: var(--brand);
+      border-left: 4px solid var(--accent);
+      padding-left: 12px;
+      margin: 28px 0 12px;
+      page-break-after: avoid;
+    }
+
+    h3 {
+      font-size: 11.5pt;
+      margin: 16px 0 8px;
+      color: var(--ink);
+    }
+
+    p { margin: 0 0 10px; }
+
+    .lead {
+      font-size: 11pt;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 14px;
+      font-size: 9.5pt;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-weight: 700;
+    }
+
+    tr:nth-child(even) td { background: #fcfdfe; }
+
+    code, .cmd {
+      font-family: Consolas, "Courier New", monospace;
+      background: #f1f5f9;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 9pt;
+    }
+
+    .cmd-block {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-family: Consolas, monospace;
+      font-size: 9.5pt;
+      margin: 10px 0 14px;
+      white-space: pre-wrap;
+    }
+
+    .callout {
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 12px 0;
+      border-left: 4px solid;
+    }
+
+    .callout.info {
+      background: var(--brand-soft);
+      border-color: var(--brand);
+    }
+
+    .callout.tip {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .callout.warn {
+      background: var(--warn-soft);
+      border-color: var(--warn-border);
+    }
+
+    .callout strong { display: block; margin-bottom: 4px; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .flow-step {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      position: relative;
+    }
+
+    .flow-step .num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--brand);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 10pt;
+      margin-bottom: 8px;
+    }
+
+    .flow-step h4 {
+      margin: 0 0 6px;
+      font-size: 10.5pt;
+    }
+
+    .flow-step p {
+      margin: 0;
+      font-size: 9pt;
+      color: var(--muted);
+    }
+
+    .wizard-steps {
+      counter-reset: wiz;
+      list-style: none;
+      padding: 0;
+      margin: 12px 0;
+    }
+
+    .wizard-steps li {
+      counter-increment: wiz;
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .wizard-steps li::before {
+      content: counter(wiz);
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 10pt;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .card h4 {
+      margin: 0 0 8px;
+      font-size: 10.5pt;
+      color: var(--brand);
+    }
+
+    ul { margin: 6px 0 10px 18px; padding: 0; }
+    li { margin-bottom: 4px; }
+
+    .footer-note {
+      margin-top: 24px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      font-size: 8.5pt;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media print {
+      .cover { min-height: auto; padding-top: 40mm; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="cover">
+    <span class="cover-badge">Slack · Dahili Anket</span>
+    <h1>Unico Poll<br/>Kullanım Kılavuzu</h1>
+    <p class="subtitle">
+      Öneri toplama, oylama kurulumu ve sonuç paylaşımı — adım adım, sade Türkçe.
+    </p>
+    <div class="cover-meta">
+      <div><strong>Komut</strong>/unico-poll</div>
+      <div><strong>Mod</strong>Klasik · Puanlama</div>
+      <div><strong>Öneri limiti</strong>5 / kişi</div>
+      <div><strong>Oylama listesi</strong>En fazla 10 seçenek</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Unico Poll nedir?</h2>
+    <p class="lead">
+      Unico Poll, Slack kanalında üç aşamalı bir anket akışı sunar. Katılımcılar öneri verir (veya atlanır),
+      yönetici oylama listesini ve kuralları belirler, ardından oylama başlar.
+    </p>
+    <div class="flow">
+      <div class="flow-step">
+        <div class="num">1</div>
+        <h4>Öneri (isteğe bağlı)</h4>
+        <p>Form ile öneri toplanır. Kanal mesajları sayılmaz.</p>
+      </div>
+      <div class="flow-step">
+        <div class="num">2</div>
+        <h4>Kurulum</h4>
+        <p>Yönetici listeyi seçer; tür, görünürlük ve süreyi adım adım belirler.</p>
+      </div>
+      <div class="flow-step">
+        <div class="num">3</div>
+        <h4>Oylama &amp; sonuç</h4>
+        <p>Kanalda oy verilir; sonuç yöneticiye gider, istenirse kanala yayınlanır.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Hızlı başlangıç</h2>
+    <div class="cmd-block">/unico-poll Yaz Turnuvası | 48h</div>
+    <p>Bu komut kanalda öneri toplama anketi açar. Başlık: <strong>Yaz Turnuvası</strong>, öneri süresi: <strong>48 saat</strong>.</p>
+    <div class="callout info">
+      <strong>Pipe kuralı</strong>
+      <code>|</code> karakterinden <em>önce</em> yazdığın metin kanaldaki anket başlığıdır.
+    </div>
+  </section>
+
+  <section>
+    <h2>Slash komutları</h2>
+    <table>
+      <thead>
+        <tr><th>Ne yazarsın</th><th>Ne olur</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="cmd">/unico-poll</span></td>
+          <td>Varsayılan başlık ve süre ile öneri anketi açar.</td>
+        </tr>
+        <tr>
+          <td><span class="cmd">/unico-poll Başlık</span></td>
+          <td>Belirttiğin başlıkla öneri anketi; süre varsayılan.</td>
+        </tr>
+        <tr>
+          <td><span class="cmd">/unico-poll Başlık | 48h</span></td>
+          <td>Öneri süresi 48 saat (1h–336h arası).</td>
+        </tr>
+        <tr>
+          <td><span class="cmd">/unico-poll Başlık | direkt</span></td>
+          <td>Kanalda öneri yok; yönetici seçenekleri modal ile girer.</td>
+        </tr>
+        <tr>
+          <td><span class="cmd">/unico-poll iptal</span></td>
+          <td>Aktif anketi kapatır — yalnızca anketi açan kullanır.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>Direkt mod anahtar kelimeleri: <code>direkt</code>, <code>onersiz</code>, <code>kanalsiz</code>, <code>no-suggestions</code></p>
+  </section>
+
+  <section>
+    <h2>Öneri fazı — katılımcılar</h2>
+    <ul>
+      <li>Kanal mesajındaki <strong>Oneri gonder (form)</strong> düğmesine bas.</li>
+      <li>Her kişi en fazla <strong>5 öneri</strong> verebilir; limit dolunca form açılmaz.</li>
+      <li>Öneri formatı: sadece isim veya <code>Oyun adı : İsim ; Not</code> — oylamada <code>:</code> öncesi görünür.</li>
+      <li>Normal kanal mesajları öneri sayılmaz.</li>
+    </ul>
+    <div class="callout warn">
+      <strong>Otomatik kapanma</strong>
+      Öneri süresi bitince 2’den az öneri varsa anket kapanır; kanalda takılı kalmaz.
+    </div>
+  </section>
+
+  <section>
+    <h2>Öneri sonrası — yönetici kurulumu</h2>
+    <p>Öneri süresi dolunca sana özel (ephemeral) bir mesaj gelir: öneri listesi + <strong>Oylama listesini sec</strong>.</p>
+    <p>Kurulum artık <strong>tek uzun form değil</strong>, sırayla açılan kısa adımlardır:</p>
+    <ol class="wizard-steps">
+      <li><div><strong>Adım 1 — Oylama listesi</strong><br/>10 satıra kadar: öneriden seç veya elle yaz (en az 2 seçenek). <em>Devam</em></div></li>
+      <li><div><strong>Adım 2 — Oylama türü</strong><br/>Klasik (tek oy) veya Puanlama (1–5). <em>Devam</em></div></li>
+      <li><div><strong>Adım 3 — Oy görünürlüğü</strong><br/>Yalnız klasik modda: Kapalı (anonim) veya Açık (kanalda kısa bildirim). <em>Devam</em></div></li>
+      <li><div><strong>Son adım — Oylama süresi</strong><br/>Kaç saat açık kalacağını gir. <em>Oylamayı Baslat</em></div></li>
+    </ol>
+    <div class="callout tip">
+      <strong>Puanlama seçersen</strong>
+      Görünürlük adımı atlanır; puanlama modunda oy her zaman kapalıdır.
+    </div>
+  </section>
+
+  <section>
+    <h2>Direkt mod (önersiz anket)</h2>
+    <div class="cmd-block">/unico-poll Lig Maçı | direkt</div>
+    <p>Kanalda öneri toplanmaz. Anketi açan kişi:</p>
+    <ul>
+      <li>Komut cevabındaki <strong>Secenekleri gir</strong> düğmesine basar (veya bota DM).</li>
+      <li>Aynı adım adım akış: seçenekler → tür → görünürlük → süre.</li>
+      <li>Oylama hazır olunca kanala duyuru gider.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Oylama türleri</h2>
+    <div class="two-col">
+      <div class="card">
+        <h4>Klasik (tek oy)</h4>
+        <ul>
+          <li>Her katılımcı bir seçenek seçer.</li>
+          <li>Oy değiştirilemez.</li>
+          <li><strong>Kapalı:</strong> ara sonuçlar gizli.</li>
+          <li><strong>Açık:</strong> oy veren kanalda kısa bildirimle görünür.</li>
+          <li>Tüm seçenekler kanal mesajında buton olarak listelenir.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Puanlama (1–5)</h4>
+        <ul>
+          <li>Her seçenek ayrı puanlanır.</li>
+          <li>Oy her zaman kapalıdır.</li>
+          <li>Modal üzerinden puan verilir.</li>
+          <li>Ortalama skorla sıralama yapılır.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Oylama sonrası</h2>
+    <table>
+      <thead>
+        <tr><th>Düğme / aksiyon</th><th>Kim</th><th>Ne yapar</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Oylarini gor</strong></td>
+          <td>Katılımcı</td>
+          <td>Oylama kapandıktan sonra kendi oyunu salt okunur görür.</td>
+        </tr>
+        <tr>
+          <td><strong>Sonuclari Kanala Yayinla</strong></td>
+          <td>Yönetici</td>
+          <td>Final sonuçlarını kanala bir kez yayınlar.</td>
+        </tr>
+        <tr>
+          <td><strong>Run-off baslat (ilk 3)</strong></td>
+          <td>Yönetici</td>
+          <td>İsteğe bağlı; ilk 3 seçenekle yeni oylama açar.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout info">
+      <strong>Beraberlik</strong>
+      Kazanan satırında eşit skora sahip tüm adaylar birlikte yazılır.
+    </div>
+  </section>
+
+  <section>
+    <h2>Pratik ipuçları</h2>
+    <ul>
+      <li>Aynı kanalda aynı anda yalnızca <strong>bir aktif anket</strong> olabilir.</li>
+      <li>Anketi kapatmak için: <span class="cmd">/unico-poll iptal</span> (pipe kullanma).</li>
+      <li>Botu kanala ekle: <span class="cmd">/invite @UnicoPoll</span></li>
+      <li>Öneri / oylama süreleri komutta veya kurulum adımında saat cinsinden ayarlanır.</li>
+      <li>Eski mesajlardaki düğmeler restart sonrası çalışmayabilir; yeni anket aç.</li>
+    </ul>
+  </section>
+
+  <p class="footer-note">
+    Unico Poll · Slack dahili anket botu · Bu kılavuz kullanıcı odaklıdır; teknik kurulum için README.md dosyasına bakın.
+  </p>
+
+</body>
+</html>
