@@ -1061,4 +1061,5 @@ function registerActions(app) {
 module.exports = {
   registerActions,
   sendCreatorResults,
+  refreshVotingChannelMessageClosed,
 };
