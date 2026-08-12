@@ -369,16 +369,20 @@ function slackErrorDetail(err) {
   return bits.join(" — ") || "bilinmeyen Slack hatasi";
 }
 
-async function safePostEphemeral(client, { channelId, user, text }) {
+async function safePostEphemeral(client, { channelId, user, text, blocks }) {
   if (!channelId || !user || !text) {
     return;
   }
   try {
-    await client.chat.postEphemeral({
+    const payload = {
       channel: channelId,
       user,
       text,
-    });
+    };
+    if (Array.isArray(blocks) && blocks.length > 0) {
+      payload.blocks = blocks;
+    }
+    await client.chat.postEphemeral(payload);
   } catch (err) {
     logger.error("postEphemeral failed", { channelId, user, error: err.message });
   }
@@ -923,6 +927,7 @@ function registerActions(app) {
   app.action("show_my_votes", async ({ ack, body, client }) => {
     await ack();
     const pollId = body.actions?.[0]?.value;
+    store.reloadStoreFromDisk();
     const lines = pollService.getUserVoteSummaryLines({
       pollId,
       actingUserIds: [
@@ -931,11 +936,17 @@ function registerActions(app) {
         ),
       ],
     });
+    const bodyText = lines.join("\n");
     await safePostEphemeral(client, {
       channelId: body.channel?.id,
       user: body.user.id,
-      text: "Oylarini (salt okunur)",
-      blocks: [{ type: "section", text: { type: "mrkdwn", text: lines.join("\n") } }],
+      text: `Oylarini\n${bodyText}`,
+      blocks: [
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `*Oylarini*\n${bodyText}` },
+        },
+      ],
     });
   });
 
