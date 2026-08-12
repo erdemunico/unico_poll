@@ -513,6 +513,21 @@ function buildVoteDurationWizardModal({ poll, wizardMeta }) {
   };
 }
 
+function myVotesActionsBlock(pollId, blockIdSuffix = "") {
+  return {
+    type: "actions",
+    block_id: `my_votes_${pollId}${blockIdSuffix}`,
+    elements: [
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Oylarini gor" },
+        action_id: "show_my_votes",
+        value: pollId,
+      },
+    ],
+  };
+}
+
 function votingBlocks({ poll, suggestions }) {
   const isClassic = String(poll.vote_mode || "").trim().toLowerCase() === "classic";
   const isOpenClassic = pollService.isOpenVotePoll(poll);
@@ -568,6 +583,8 @@ function votingBlocks({ poll, suggestions }) {
     });
   }
 
+  blocks.push(myVotesActionsBlock(poll.id, "_open"));
+
   return blocks;
 }
 
@@ -585,18 +602,7 @@ function votingClosedBlocks({ poll }) {
           extra,
       },
     },
-    {
-      type: "actions",
-      block_id: `my_votes_${poll.id}`,
-      elements: [
-        {
-          type: "button",
-          text: { type: "plain_text", text: "Oylarini gor" },
-          action_id: "show_my_votes",
-          value: poll.id,
-        },
-      ],
-    },
+    myVotesActionsBlock(poll.id, "_closed"),
   ];
 }
 
