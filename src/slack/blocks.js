@@ -581,7 +581,7 @@ function votingClosedBlocks({ poll }) {
         type: "mrkdwn",
         text:
           `<!channel> *${poll.title}* — oylama *kapandi*.\n` +
-          `Oylar artik degistirilemez. Asagidan yalnizca *kendi oylarini* gorursun (salt okunur).` +
+          `Oylar artik degistirilemez. Asagidan yalnizca *kendi oylarini* gorursun.` +
           extra,
       },
     },
