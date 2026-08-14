@@ -1107,4 +1107,5 @@ module.exports = {
   registerActions,
   sendCreatorResults,
   refreshVotingChannelMessageClosed,
+  finalizeStartVotingFromWizard,
 };

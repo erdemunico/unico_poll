@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "lint": "eslint .",
-    "pdf": "bash scripts/generate-pdf.sh"
+    "pdf": "bash scripts/generate-pdf.sh",
+    "test": "node --test tests/**/*.test.js"
   },
   "keywords": [
     "slack",
