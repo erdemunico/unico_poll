@@ -256,18 +256,47 @@ function buildDirectBallotModal({ poll, preservedValues = null }) {
   };
 }
 
-function formatSuggestionListMrkdwn(suggestions) {
-  const lines = suggestions.map((s, idx) => `*${idx + 1}.* ${s.display_name}`);
-  let text = lines.join("\n");
-  const slackSectionMax = 2900;
-  if (text.length > slackSectionMax) {
-    text = `${text.slice(0, slackSectionMax - 40)}\n_… liste kisaltildi; tam liste modalda._`;
+function suggestionListSectionBlocks(suggestions) {
+  if (!suggestions.length) {
+    return [
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: "_Henuz oneriler yok._" },
+      },
+    ];
   }
-  return text || "_Henuz oneriler yok._";
+  const lines = suggestions.map((s, idx) => `*${idx + 1}.* ${s.display_name}`);
+  const chunks = [];
+  let current = [];
+  let len = 0;
+  for (const line of lines) {
+    const extra = (current.length ? 1 : 0) + line.length;
+    if (current.length && len + extra > 2800) {
+      chunks.push(current.join("\n"));
+      current = [line];
+      len = line.length;
+    } else {
+      current.push(line);
+      len += extra;
+    }
+  }
+  if (current.length) {
+    chunks.push(current.join("\n"));
+  }
+  const maxChunks = 45;
+  const visible = chunks.slice(0, maxChunks);
+  if (chunks.length > maxChunks) {
+    visible[visible.length - 1] += `\n_… ${suggestions.length} onerinin tamami modalda._`;
+  }
+  return visible.map((text) => ({
+    type: "section",
+    text: { type: "mrkdwn", text },
+  }));
 }
 
 function creatorSuggestionControlBlocks(poll, suggestions, maxOptions, { mentionUserId } = {}) {
   const mention = mentionUserId ? `<@${mentionUserId}> ` : "";
+  const count = suggestions.length;
   return [
     {
       type: "section",
@@ -275,24 +304,17 @@ function creatorSuggestionControlBlocks(poll, suggestions, maxOptions, { mention
         type: "mrkdwn",
         text:
           `${mention}*${poll.title}* — oneri toplama suresi bitti.\n` +
-          `Asagida toplanan oneriler listelenir. *Oylama listesini sec* ile once oylama listesi, ` +
-          `sonra sirasiyla *oylama turu*, *oy gorunurlugu* (klasik) ve *oylama suresi* adimlari gelir.`,
+          `*Toplam ${count} oneri* (hepsi asagida). Oylamaya *en fazla ${maxOptions}* tanesini sececeksin; ` +
+          `10'dan fazla oneri olmasi normal, hepsi kayitli.\n` +
+          `*Oylama listesini sec* ile sirayla liste / tur / gorunurluk / sure adimlari acilir.`,
       },
     },
+    ...suggestionListSectionBlocks(suggestions),
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: formatSuggestionListMrkdwn(suggestions),
-      },
-    },
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text:
-          `En fazla *${maxOptions}* secenek oylamaya alinabilir. ` +
-          `Kanalda toplanan oneri sayisinin bir ust siniri yok; oylamaya hangilerinin girecegini sen belirlersin.`,
+        text: `Oylamaya girecekleri sen secerin (en az 2, en fazla *${maxOptions}*).`,
       },
       accessory: {
         type: "button",
@@ -306,7 +328,7 @@ function creatorSuggestionControlBlocks(poll, suggestions, maxOptions, { mention
 }
 
 function buildStartVotingModal({ poll, suggestions, preservedValues = null }) {
-  const maxInSelect = 90;
+  const maxInSelect = 99;
   const sliced = suggestions.slice(0, maxInSelect);
   const suggestionSelectOptions = [
     { text: { type: "plain_text", text: "(bos)" }, value: "__skip__" },
