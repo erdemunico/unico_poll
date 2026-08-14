@@ -75,7 +75,7 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 12px;
-      max-width: 420px;
+      max-width: 480px;
       margin-top: 24px;
     }
 
@@ -306,9 +306,11 @@
     </p>
     <div class="cover-meta">
       <div><strong>Komut</strong>/unico-poll</div>
-      <div><strong>Mod</strong>Klasik · Puanlama</div>
+      <div><strong>Mod</strong>Klasik · Puanlama · Açık / Kapalı</div>
       <div><strong>Öneri limiti</strong>5 / kişi</div>
       <div><strong>Oylama listesi</strong>En fazla 10 seçenek</div>
+      <div><strong>Sürüm</strong>Ağustos 2026</div>
+      <div><strong>Kurulum</strong>Workspace’e bir kez</div>
     </div>
   </div>
 
@@ -334,6 +336,20 @@
         <h4>Oylama &amp; sonuç</h4>
         <p>Kanalda oy verilir; sonuç yöneticiye gider, istenirse kanala yayınlanır.</p>
       </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Kim yükler?</h2>
+    <p>
+      Unico Poll <strong>workspace’e bir kez</strong> yüklenir. Kanal üyelerinin uygulamayı kendi hesabına
+      kurması gerekmez. Bot kanala davet edildikten sonra herkes komutu, formu ve oy düğmelerini kullanır.
+    </p>
+    <div class="cmd-block">/invite @UnicoPoll</div>
+    <div class="callout info">
+      <strong>Gizli mesajlar kişiseldır</strong>
+      Slack’te <em>Only visible to you</em> yazan satırlar kanala düşmez; yalnızca o kişiye gider.
+      Başkasının öneri onayı senin ekranında görünmez — bu bir hata değil.
     </div>
   </section>
 
@@ -371,12 +387,19 @@
           <td>Kanalda öneri yok; yönetici seçenekleri modal ile girer.</td>
         </tr>
         <tr>
+          <td><span class="cmd">/unico-poll durum</span></td>
+          <td>Bu kanalda aktif anket var mı gösterir (başlık, faz, öneri sayısı). <strong>Yeni anket açmaz.</strong></td>
+        </tr>
+        <tr>
           <td><span class="cmd">/unico-poll iptal</span></td>
           <td>Aktif anketi kapatır — yalnızca anketi açan kullanır.</td>
         </tr>
       </tbody>
     </table>
-    <p>Direkt mod anahtar kelimeleri: <code>direkt</code>, <code>onersiz</code>, <code>kanalsiz</code>, <code>no-suggestions</code></p>
+    <p>
+      Direkt anahtar kelimeleri: <code>direkt</code>, <code>onersiz</code>, <code>kanalsiz</code>, <code>no-suggestions</code>.
+      Durum için <code>status</code> veya <code>info</code> de geçerli. İptal için <code>cancel</code> de olur.
+    </p>
   </section>
 
   <section>
@@ -386,17 +409,31 @@
       <li>Her kişi en fazla <strong>5 öneri</strong> verebilir; limit dolunca form açılmaz.</li>
       <li>Öneri formatı: sadece isim veya <code>Oyun adı : İsim ; Not</code> — oylamada <code>:</code> öncesi görünür.</li>
       <li>Normal kanal mesajları öneri sayılmaz.</li>
+      <li>Gönderince <em>Only visible to you</em> onayı ve Unico Poll <strong>DM</strong>’inde kendi listen gelir.</li>
+      <li>Onay kaybolursa kanaldaki <strong>Onerilerini gor</strong> düğmesine bas veya <span class="cmd">/unico-poll</span> yaz — yeni anket açılmaz, kendi listen tekrar gelir.</li>
     </ul>
     <div class="callout warn">
       <strong>Otomatik kapanma</strong>
       Öneri süresi bitince 2’den az öneri varsa anket kapanır; kanalda takılı kalmaz.
     </div>
+    <div class="callout tip">
+      <strong>Neden arkadaşımın önerisi bende yok?</strong>
+      Herkes yalnızca <em>kendi</em> önerilerini görür. Yönetici süre bitince tüm listeyi (oylamaya en fazla 10) seçim ekranında görür.
+    </div>
   </section>
 
   <section>
     <h2>Öneri sonrası — yönetici kurulumu</h2>
-    <p>Öneri süresi dolunca sana özel (ephemeral) bir mesaj gelir: öneri listesi + <strong>Oylama listesini sec</strong>.</p>
-    <p>Kurulum artık <strong>tek uzun form değil</strong>, sırayla açılan kısa adımlardır:</p>
+    <p>
+      Öneri süresi dolunca seçim ekranı <strong>üç yoldan</strong> gelir: bota <strong>DM</strong>, kanalda sana özel
+      (ephemeral) mesaj ve DM olmazsa kanalda seni etiketleyen yedek. Listede <strong>toplanan tüm öneriler</strong>
+      görünür (Slack sınırı yüzünden birkaç parçaya bölünebilir). Oylamaya girecekler en fazla <strong>10</strong> seçilir.
+    </p>
+    <p>
+      Ekran kaybolduysa kanalda <span class="cmd">/unico-poll</span> yaz — yeni anket açılmaz;
+      <strong>Oylama listesini sec</strong> tekrar gönderilir.
+    </p>
+    <p>Kurulum <strong>tek uzun form değil</strong>, sırayla açılan kısa adımlardır:</p>
     <ol class="wizard-steps">
       <li><div><strong>Adım 1 — Oylama listesi</strong><br/>10 satıra kadar: öneriden seç veya elle yaz (en az 2 seçenek). <em>Devam</em></div></li>
       <li><div><strong>Adım 2 — Oylama türü</strong><br/>Klasik (tek oy) veya Puanlama (1–5). <em>Devam</em></div></li>
@@ -430,7 +467,7 @@
           <li>Oy değiştirilemez.</li>
           <li><strong>Kapalı:</strong> ara sonuçlar gizli.</li>
           <li><strong>Açık:</strong> oy veren kanalda kısa bildirimle görünür.</li>
-          <li>Tüm seçenekler kanal mesajında buton olarak listelenir.</li>
+          <li>Tüm seçenekler (en fazla 10) kanal mesajında buton olarak listelenir; 5’ten fazlaysa birkaç satıra bölünür.</li>
         </ul>
       </div>
       <div class="card">
@@ -446,16 +483,21 @@
   </section>
 
   <section>
-    <h2>Oylama sonrası</h2>
+    <h2>Oylama sırasında ve sonrası</h2>
     <table>
       <thead>
         <tr><th>Düğme / aksiyon</th><th>Kim</th><th>Ne yapar</th></tr>
       </thead>
       <tbody>
         <tr>
+          <td><strong>Onerilerini gor</strong></td>
+          <td>Katılımcı</td>
+          <td>Öneri fazında kendi gönderdiğin oyunları tekrar açar (kaybolan gizli bildirimin yerine).</td>
+        </tr>
+        <tr>
           <td><strong>Oylarini gor</strong></td>
           <td>Katılımcı</td>
-          <td>Oylama kapandıktan sonra kendi oyunu salt okunur görür.</td>
+          <td>Oylama <em>açıkken ve kapandıktan sonra</em> kendi oyunu görür. Başkasının oyunu göstermez.</td>
         </tr>
         <tr>
           <td><strong>Sonuclari Kanala Yayinla</strong></td>
@@ -479,15 +521,16 @@
     <h2>Pratik ipuçları</h2>
     <ul>
       <li>Aynı kanalda aynı anda yalnızca <strong>bir aktif anket</strong> olabilir.</li>
+      <li>Durumu sormak için: <span class="cmd">/unico-poll durum</span> (yeni anket açmaz).</li>
       <li>Anketi kapatmak için: <span class="cmd">/unico-poll iptal</span> (pipe kullanma).</li>
       <li>Botu kanala ekle: <span class="cmd">/invite @UnicoPoll</span></li>
       <li>Öneri / oylama süreleri komutta veya kurulum adımında saat cinsinden ayarlanır.</li>
-      <li>Eski mesajlardaki düğmeler restart sonrası çalışmayabilir; yeni anket aç.</li>
+      <li>Kanalda eski “oylama açık” mesajı kalmış ama <code>durum</code> “aktif kayıt yok” diyorsa bot yeniden başlatılmış olabilir; eski düğmelere basma, yeni anket aç.</li>
     </ul>
   </section>
 
   <p class="footer-note">
-    Unico Poll · Slack dahili anket botu · Bu kılavuz kullanıcı odaklıdır; teknik kurulum için README.md dosyasına bakın.
+    Unico Poll · Slack dahili anket botu · Ağustos 2026 · Kullanıcı kılavuzu; teknik kurulum için README.md.
   </p>
 
 </body>

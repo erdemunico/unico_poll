@@ -26,6 +26,7 @@ Kanalda yazilir; **o kanalda** anket acar veya kapatir. Ayni kanalda ayni anda t
 | Ne yapilir | Ne olur |
 |------------|---------|
 | *Oneri gonder (form)* dugmesi | Oneri fazinda form acilir. Her kisi en fazla **5** oneri (`.env`: `SUGGESTION_MAX_PER_USER`). Limit dolunca form acilmaz. |
+| *Onerilerini gor* dugmesi | Katilimci **yalnizca kendi** onerilerini tekrar acar (Slack *Only visible to you* kaybolabilir). Ayni liste Unico Poll DM'inde de durur. `/unico-poll` oneri fazinda da bu listeyi yeniden gonderir; yeni anket **acmaz**. |
 | Kanala normal mesaj | **Oneri olarak islenmez** (bot kanal mesajlarini oneri icin dinlemez). |
 
 ---
@@ -37,13 +38,18 @@ Kullanicilarin gordugu ana tetikleyiciler:
 | Gorunen aksiyon | Kime | Ne yapar |
 |-----------------|------|----------|
 | Secenekleri gir (yonetici) | Anketi acan | **Direkt modda:** slash cevabinda (ephemeral), bota DM veya (DM yoksa) kanalda yalnizca sana gorunen/etiketli mesajdaki dugme. Tiklayinca oylama secenekleri + tur (klasik / puanlama, acik/kapali oy) modal ile girilir. |
-| Oylama listesini sec | Anketi acan | Oneri suresi bitince gelen listeden oylamaya girecekleri secer, oylamayi baslatir. |
+| Oylama listesini sec | Anketi acan | Oneri suresi bitince DM + kanalda ozel bildirim (kaybolursa `/unico-poll`). Toplanan **tum** oneriler listelenir; oylamaya en fazla 10 secilir. |
 | Oneri gonder (form) | Katilimci | Oneri fazinda form acar. Limit dolunca (varsayilan 5) form acilmaz. |
-| Oylarini gor | Katilimci | Oylama kapandiktan sonra **kendi** oyunu salt okunur gosterir. |
+| Onerilerini gor | Katilimci | Kendi oneri listesini tekrar acar. Baska kisinin onerisini gostermez. |
+| Oylarini gor | Katilimci | Oylama **acikken ve kapandiktan sonra** **kendi** oyunu gosterir. |
 | Sonuclari Kanala Yayinla | Anketi acan | Final sonuclarini **kanala** bir kez yayinlar (tekrar tiklamada engellenir). |
 | Run-off baslat (ilk 3) | Anketi acan | **Istege bagli.** Sonuc ozetinde en az 2 secenek varken gorunur; tiklayinca mevcut siralamadaki *ilk 3* ile yeni oylama anketi acilir. Kanala yayinlamadan once veya sonra kullanilabilir. |
 
 **Not:** *Acik oy* (oy verenin kanalda kisa **ayri mesaj** olarak gorunmesi) yalnizca **klasik (tek oy)** modunda secilebilir. **Puanlama (1-5)** modunda oy her zaman kapalidir.
+
+Klasik oylamada en fazla **10** secenek kanal mesajinda buton olarak gorunur (Slack 5 dugme limiti yuzunden birden fazla satir).
+
+Uygulama **workspace'e bir kez** yuklenir; kanal uyelerinin ayri kurulum yapmasi gerekmez. Botu kanala `/invite @UnicoPoll` ile ekle.
 
 **Kanal sonuclari:** *Sonuclari Kanala Yayinla* sonunda *Kazanan* satirinda en yuksek skora sahip **tum** adaylar yazilir (beraberlikte or. *Ahmet — Kemal*).
 
