@@ -64,6 +64,12 @@ function suggestionAnnouncementBlocks(poll) {
           value: poll.id,
           style: "primary",
         },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Onerilerini gor" },
+          action_id: "show_my_suggestions",
+          value: poll.id,
+        },
       ],
     },
     {
@@ -83,7 +89,8 @@ function suggestionAnnouncementBlocks(poll) {
         {
           type: "mrkdwn",
           text:
-            "Oneri suresi bitince *yonetici* hangi onerilerin oylamaya girecegini ayri olarak secer; bu mesajda liste yok.",
+            "Kendi onerilerin *Onerilerini gor* ile her zaman acilir (Slack *Only visible to you* bildirimi kaybolabilir). " +
+            "Oneri suresi bitince *yonetici* oylama listesini secer; bu mesajda herkesin listesi yok.",
         },
       ],
     },
@@ -292,6 +299,27 @@ function suggestionListSectionBlocks(suggestions) {
     type: "section",
     text: { type: "mrkdwn", text },
   }));
+}
+
+function userSuggestionReceiptBlocks({ poll, suggestions, maxPerUser }) {
+  const max = Math.max(0, Number(maxPerUser) || 0);
+  const cap = max > 0 ? String(max) : "∞";
+  const mine = Array.isArray(suggestions) ? suggestions : [];
+  const list = mine.length
+    ? mine.map((s, idx) => `*${idx + 1}.* ${s.display_name}`).join("\n")
+    : "_Henuz onerin yok._";
+  const title = poll?.title || "Unico Poll";
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text:
+          `*${title}* — senin onerilerin (*${mine.length}/${cap}*)\n${list}\n` +
+          `_Bu liste yalnizca sende gorunur. Kaybolursa kanaldaki *Onerilerini gor* dugmesine bas veya \`/unico-poll\` yaz._`,
+      },
+    },
+  ];
 }
 
 function creatorSuggestionControlBlocks(poll, suggestions, maxOptions, { mentionUserId } = {}) {
@@ -813,6 +841,7 @@ module.exports = {
   buildVoteDurationWizardModal,
   creatorSuggestionControlBlocks,
   buildStartVotingModal,
+  userSuggestionReceiptBlocks,
   votingBlocks,
   votingClosedBlocks,
   buildClassicVoteModal,
