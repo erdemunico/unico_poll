@@ -1,6 +1,6 @@
 const { parseHoursArg, parseSuggestionInput, parseSkipChannelSuggestions, stripSkipChannelKeywords } = require("../utils/parser");
 const { collectCreatorCandidateIds } = require("../utils/slackActor");
-const { isPastIso } = require("../utils/time");
+const { isPastIso, formatSlackDate } = require("../utils/time");
 const env = require("../config/env");
 const pollService = require("../services/pollService");
 const store = require("../db/store");
@@ -37,6 +37,39 @@ function isCancelCommandText(text) {
   }
   const lower = raw.toLowerCase();
   return lower === "cancel" || lower === "iptal";
+}
+
+function isStatusCommandText(text) {
+  const raw = String(text || "").trim();
+  if (!raw || raw.includes("|")) {
+    return false;
+  }
+  const lower = raw.toLowerCase();
+  return lower === "durum" || lower === "status" || lower === "info";
+}
+
+function formatActivePollStatus(poll) {
+  const suggestions = pollService.listSuggestions(poll.id);
+  const lines = [
+    `*Aktif anket:* ${poll.title}`,
+    `*Faz:* ${phaseDescriptionTr(poll.phase)}`,
+    `*Oneri sayisi:* ${suggestions.length}`,
+  ];
+  if (poll.suggestion_deadline_at) {
+    lines.push(`*Oneri bitis:* ${formatSlackDate(poll.suggestion_deadline_at)}`);
+  }
+  if (poll.voting_deadline_at) {
+    lines.push(`*Oylama bitis:* ${formatSlackDate(poll.voting_deadline_at)}`);
+  }
+  if (poll.phase === "ready_for_voting") {
+    lines.push(
+      "Oneri suresi bitmis; anketi acan kisi `/unico-poll` yazarak *Oylama listesini sec* ekranini alabilir."
+    );
+  }
+  if (poll.phase === "suggestion" && poll.suggestion_deadline_at && isPastIso(poll.suggestion_deadline_at)) {
+    lines.push("Oneri suresi dolmus; anketi acan kisi `/unico-poll` yazarak secim ekranini tetikleyebilir.");
+  }
+  return lines.join("\n");
 }
 
 function phaseDescriptionTr(phase) {
@@ -83,6 +116,18 @@ function registerCommands(app) {
           text: "Bu komutu kullanma yetkin yok.",
         });
         logger.warn("Unauthorized poll creation attempt", { userId: creatorId, channelId });
+        return;
+      }
+
+      if (isStatusCommandText(command.text)) {
+        store.reloadStoreFromDisk();
+        const poll = pollService.getActivePollInChannel(channelId);
+        await safeAck({
+          response_type: "ephemeral",
+          text: poll
+            ? formatActivePollStatus(poll)
+            : "Bu kanalda *aktif anket kaydi yok.* Yeni anket: `/unico-poll Baslik | 48h`",
+        });
         return;
       }
 
