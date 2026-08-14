@@ -23,13 +23,16 @@ if [[ -z "$CHROME" ]]; then
   exit 1
 fi
 
-"$CHROME" \
-  --headless=new \
+CHROME_USER_DATA="$(mktemp -d /tmp/unico-pdf-chrome-XXXXXX)"
+cleanup() { rm -rf "$CHROME_USER_DATA"; }
+trap cleanup EXIT
+
+timeout 60 "$CHROME" \
+  --headless \
   --disable-gpu \
   --no-sandbox \
   --disable-dev-shm-usage \
-  --run-all-compositor-stages-before-draw \
-  --virtual-time-budget=2000 \
+  --user-data-dir="$CHROME_USER_DATA" \
   --print-to-pdf="$PDF" \
   "file://$HTML" \
   >/dev/null 2>&1 || true
