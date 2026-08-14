@@ -256,15 +256,25 @@ function buildDirectBallotModal({ poll, preservedValues = null }) {
   };
 }
 
-function creatorSuggestionControlBlocks(poll, suggestions, maxOptions) {
-  const items = suggestions.map((s, idx) => `*${idx + 1}.* ${s.display_name}`).join("\n");
+function formatSuggestionListMrkdwn(suggestions) {
+  const lines = suggestions.map((s, idx) => `*${idx + 1}.* ${s.display_name}`);
+  let text = lines.join("\n");
+  const slackSectionMax = 2900;
+  if (text.length > slackSectionMax) {
+    text = `${text.slice(0, slackSectionMax - 40)}\n_… liste kisaltildi; tam liste modalda._`;
+  }
+  return text || "_Henuz oneriler yok._";
+}
+
+function creatorSuggestionControlBlocks(poll, suggestions, maxOptions, { mentionUserId } = {}) {
+  const mention = mentionUserId ? `<@${mentionUserId}> ` : "";
   return [
     {
       type: "section",
       text: {
         type: "mrkdwn",
         text:
-          `*${poll.title}* — oneri toplama suresi bitti.\n` +
+          `${mention}*${poll.title}* — oneri toplama suresi bitti.\n` +
           `Asagida toplanan oneriler listelenir. *Oylama listesini sec* ile once oylama listesi, ` +
           `sonra sirasiyla *oylama turu*, *oy gorunurlugu* (klasik) ve *oylama suresi* adimlari gelir.`,
       },
@@ -273,7 +283,7 @@ function creatorSuggestionControlBlocks(poll, suggestions, maxOptions) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: items || "_Henuz oneriler yok._",
+        text: formatSuggestionListMrkdwn(suggestions),
       },
     },
     {

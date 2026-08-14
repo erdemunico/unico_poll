@@ -35,8 +35,15 @@ function registerScheduler(app) {
 async function runSchedulerTick(app) {
   store.reloadStoreFromDisk();
   const expiredSuggestion = pollService.getExpiredSuggestionPolls();
+  if (expiredSuggestion.length) {
+    logger.info("Scheduler expired suggestion polls", {
+      count: expiredSuggestion.length,
+      pollIds: expiredSuggestion.map((p) => p.id).join(","),
+    });
+  }
   for (const poll of expiredSuggestion) {
     if (!pollService.tryClaimSuggestionPhaseClose(poll.id)) {
+      logger.info("Scheduler skipped suggestion close (claim held)", { pollId: poll.id });
       continue;
     }
     try {
@@ -44,9 +51,17 @@ async function runSchedulerTick(app) {
       if (suggestions.length < 2) {
         pollService.closePoll(poll.id);
         await notifyPollClosedInsufficientSuggestions({ app, poll, count: suggestions.length });
+        logger.info("Scheduler closed poll: insufficient suggestions", {
+          pollId: poll.id,
+          count: suggestions.length,
+        });
       } else {
         await notifySuggestionPhaseEnded({ app, poll });
         pollService.markSuggestionClosed(poll.id);
+        logger.info("Scheduler suggestion phase closed", {
+          pollId: poll.id,
+          suggestionCount: suggestions.length,
+        });
       }
     } catch (err) {
       pollService.clearSuggestionPhaseCloseClaim(poll.id);
