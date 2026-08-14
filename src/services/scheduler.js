@@ -94,4 +94,5 @@ async function runSchedulerTick(app) {
 
 module.exports = {
   registerScheduler,
+  runSchedulerTick,
 };
