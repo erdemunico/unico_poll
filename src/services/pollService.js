@@ -155,6 +155,27 @@ function getUserSuggestionCount({ pollId, userId }) {
   return state.suggestions.filter((s) => s.poll_id === pollId && s.submitted_by === userId).length;
 }
 
+function listSuggestionsForUser({ pollId, userId }) {
+  return listSuggestions(pollId).filter((s) => s.submitted_by === userId);
+}
+
+function getUserSuggestionSummaryLines({ pollId, userId }) {
+  const poll = getPollById(pollId);
+  if (!poll) {
+    return ["Anket bulunamadi."];
+  }
+  const mine = listSuggestionsForUser({ pollId, userId });
+  const maxPerUser = env.suggestionMaxPerUser;
+  const cap = maxPerUser > 0 ? String(maxPerUser) : "∞";
+  if (!mine.length) {
+    return [`Bu anket icin henuz onerin yok (*0/${cap}*).`];
+  }
+  return [
+    `Kayitli onerilerin (*${mine.length}/${cap}*):`,
+    ...mine.map((s, idx) => `${idx + 1}. ${s.display_name}`),
+  ];
+}
+
 function listSuggestions(pollId) {
   const state = getState();
   return state.suggestions
@@ -849,6 +870,8 @@ module.exports = {
   addSuggestion,
   getUserSuggestionCountSince,
   getUserSuggestionCount,
+  listSuggestionsForUser,
+  getUserSuggestionSummaryLines,
   listSuggestions,
   saveShortlist,
   getShortlistedSuggestions,

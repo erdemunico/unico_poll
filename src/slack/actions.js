@@ -958,6 +958,20 @@ function registerActions(app) {
 
   });
 
+  app.action("show_my_suggestions", async ({ ack, body, client }) => {
+    await ack();
+    const pollId = body.actions?.[0]?.value;
+    store.reloadStoreFromDisk();
+    const poll = pollService.getPollById(pollId);
+    const uid = primarySlackUserId(body) || body.user?.id;
+    const channelId = body.channel?.id || poll?.channel_id;
+    if (!poll || !uid) {
+      return;
+    }
+    const { deliverUserSuggestionReceipt } = require("./suggestionReceipts");
+    await deliverUserSuggestionReceipt({ client, poll, userId: uid, channelId });
+  });
+
   app.action("show_my_votes", async ({ ack, body, client }) => {
     await ack();
     const pollId = body.actions?.[0]?.value;

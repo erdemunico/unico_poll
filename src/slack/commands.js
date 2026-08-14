@@ -12,6 +12,7 @@ const {
   creatorSuggestionControlBlocks,
   buildSuggestionModal,
 } = require("./blocks");
+const { deliverUserSuggestionReceipt } = require("./suggestionReceipts");
 
 function parseCommandText(text) {
   const raw = String(text || "").trim();
@@ -48,13 +49,19 @@ function isStatusCommandText(text) {
   return lower === "durum" || lower === "status" || lower === "info";
 }
 
-function formatActivePollStatus(poll) {
+function formatActivePollStatus(poll, userId) {
   const suggestions = pollService.listSuggestions(poll.id);
   const lines = [
     `*Aktif anket:* ${poll.title}`,
     `*Faz:* ${phaseDescriptionTr(poll.phase)}`,
     `*Oneri sayisi:* ${suggestions.length}`,
   ];
+  if (userId && (poll.phase === "suggestion" || poll.phase === "ready_for_voting")) {
+    const mine = pollService.listSuggestionsForUser({ pollId: poll.id, userId });
+    if (mine.length) {
+      lines.push(`*Senin onerilerin:* ${mine.map((s) => s.display_name).join(", ")}`);
+    }
+  }
   if (poll.suggestion_deadline_at) {
     lines.push(`*Oneri bitis:* ${formatSlackDate(poll.suggestion_deadline_at)}`);
   }
@@ -125,7 +132,7 @@ function registerCommands(app) {
         await safeAck({
           response_type: "ephemeral",
           text: poll
-            ? formatActivePollStatus(poll)
+            ? formatActivePollStatus(poll, creatorId)
             : "Bu kanalda *aktif anket kaydi yok.* Yeni anket: `/unico-poll Baslik | 48h`",
         });
         return;
@@ -199,6 +206,23 @@ function registerCommands(app) {
               text: `Secim ekrani gonderilemedi: _${err.message}_`,
             });
           }
+          return;
+        }
+
+        if (activePoll.phase === "suggestion" && !suggestionExpired) {
+          await safeAck({
+            response_type: "ephemeral",
+            text:
+              `Bu kanalda aktif anket: *${activePoll.title}* (oneri toplama).\n` +
+              `Kendi onerilerin kanalda ve Unico Poll DM'inde guncelleniyor (kaybolan *Only visible to you* yerine).\n` +
+              `Yeni anket icin yalnizca baslatan: \`/unico-poll iptal\` veya \`/unico-poll cancel\``,
+          });
+          await deliverUserSuggestionReceipt({
+            client,
+            poll: activePoll,
+            userId: creatorId,
+            channelId,
+          });
           return;
         }
 
@@ -490,19 +514,13 @@ function registerCommands(app) {
     }
 
     await ack();
-    if (replyChannel && uid) {
-      const usedAfter = pollService.getUserSuggestionCount({ pollId: poll.id, userId: uid });
-      const limitHint =
-        maxPerUser > 0 ? ` (*${usedAfter}/${maxPerUser}*)` : "";
-      try {
-        await client.chat.postEphemeral({
-          channel: replyChannel,
-          user: uid,
-          text: `Onerin alindi: *${parsed.displayName}*${limitHint}`,
-        });
-      } catch (err) {
-        logger.error("suggestion_submit ephemeral failed", { error: err.message });
-      }
+    if (uid) {
+      await deliverUserSuggestionReceipt({
+        client,
+        poll,
+        userId: uid,
+        channelId: replyChannel,
+      });
     }
   });
 }
