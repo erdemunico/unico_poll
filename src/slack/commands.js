@@ -124,13 +124,51 @@ function registerCommands(app) {
 
       const activePoll = pollService.getActivePollInChannel(channelId);
       if (activePoll) {
+        const isCreator = pollService.pollManagedByAnyOf(activePoll, actingSlackUserIds);
+        const suggestionExpired =
+          activePoll.phase === "suggestion" &&
+          activePoll.suggestion_deadline_at &&
+          isPastIso(activePoll.suggestion_deadline_at);
+
+        if (isCreator && (activePoll.phase === "ready_for_voting" || suggestionExpired)) {
+          await safeAck({
+            response_type: "ephemeral",
+            text:
+              `*${activePoll.title}* — oneri suresi bitti. Secim ekranini DM ve bu kanala tekrar gonderiyorum ` +
+              `(kaybolan ephemeral yerine).`,
+          });
+          try {
+            if (suggestionExpired) {
+              await closeSuggestionPhaseAndNotify({ app, poll: activePoll });
+            } else {
+              await deliverCreatorSuggestionSetup({ client, poll: activePoll });
+            }
+          } catch (err) {
+            logger.error("Failed to resend suggestion setup", {
+              pollId: activePoll.id,
+              error: err.message,
+            });
+            await client.chat.postEphemeral({
+              channel: channelId,
+              user: creatorId,
+              text: `Secim ekrani gonderilemedi: _${err.message}_`,
+            });
+          }
+          return;
+        }
+
+        const extra =
+          activePoll.phase === "ready_for_voting"
+            ? "\nOneri suresi bitmis; anketi acan kisi `/unico-poll` yazarak *Oylama listesini sec* ekranini tekrar alabilir."
+            : "";
         await safeAck({
           response_type: "ephemeral",
           text:
             `Bu kanalda zaten aktif bir anket var: *${activePoll.title}* (${phaseDescriptionTr(
               activePoll.phase
             )}).\n` +
-            `Yeni anket icin once mevcut anketi kapatin (yalnizca baslatan): \`/unico-poll iptal\` veya \`/unico-poll cancel\``,
+            `Yeni anket icin once mevcut anketi kapatin (yalnizca baslatan): \`/unico-poll iptal\` veya \`/unico-poll cancel\`` +
+            extra,
         });
         return;
       }
@@ -424,18 +462,101 @@ function registerCommands(app) {
   });
 }
 
-async function notifySuggestionPhaseEnded({ app, poll }) {
+async function deliverCreatorSuggestionSetup({ client, poll }) {
+  const suggestions = pollService.listSuggestions(poll.id);
+  const blocks = creatorSuggestionControlBlocks(poll, suggestions, pollService.MAX_OPTIONS);
+  const text = `${poll.title} — oneri toplama suresi bitti. Oylama listesini sec.`;
+  const delivered = { dm: false, ephemeral: false, channel: false };
+
   try {
-    const suggestions = pollService.listSuggestions(poll.id);
-    await app.client.chat.postEphemeral({
+    const im = await client.conversations.open({ users: poll.creator_id });
+    if (im.ok && im.channel?.id) {
+      await client.chat.postMessage({
+        channel: im.channel.id,
+        text,
+        blocks,
+      });
+      delivered.dm = true;
+    } else {
+      logger.warn("Suggestion-end DM: conversations.open not ok", {
+        pollId: poll.id,
+        creatorId: poll.creator_id,
+        error: im.error,
+      });
+    }
+  } catch (err) {
+    logger.warn("Suggestion-end DM failed", { pollId: poll.id, error: err.message });
+  }
+
+  try {
+    await client.chat.postEphemeral({
       channel: poll.channel_id,
       user: poll.creator_id,
-      text: "Oneri toplama suresi doldu.",
-      blocks: creatorSuggestionControlBlocks(poll, suggestions, pollService.MAX_OPTIONS),
+      text,
+      blocks,
     });
-  } catch (error) {
-    logger.error("Failed to notify suggestion end", { pollId: poll.id, error: error.message });
+    delivered.ephemeral = true;
+  } catch (err) {
+    logger.warn("Suggestion-end ephemeral failed", { pollId: poll.id, error: err.message });
   }
+
+  if (!delivered.dm) {
+    try {
+      await client.chat.postMessage({
+        channel: poll.channel_id,
+        text: `<@${poll.creator_id}> ${text}`,
+        blocks: creatorSuggestionControlBlocks(poll, suggestions, pollService.MAX_OPTIONS, {
+          mentionUserId: poll.creator_id,
+        }),
+      });
+      delivered.channel = true;
+    } catch (err) {
+      logger.error("Suggestion-end channel fallback failed", { pollId: poll.id, error: err.message });
+    }
+  }
+
+  if (!delivered.dm && !delivered.ephemeral && !delivered.channel) {
+    throw new Error("Could not deliver suggestion-end controls (DM, ephemeral, and channel all failed)");
+  }
+
+  logger.info("Suggestion-end controls delivered", {
+    pollId: poll.id,
+    channelId: poll.channel_id,
+    suggestionCount: suggestions.length,
+    ...delivered,
+  });
+  return delivered;
+}
+
+async function closeSuggestionPhaseAndNotify({ app, poll }) {
+  const suggestions = pollService.listSuggestions(poll.id);
+  if (suggestions.length < 2) {
+    if (!pollService.tryClaimSuggestionPhaseClose(poll.id) && poll.phase === "suggestion") {
+      return;
+    }
+    pollService.closePoll(poll.id);
+    await notifyPollClosedInsufficientSuggestions({ app, poll, count: suggestions.length });
+    return;
+  }
+
+  if (poll.phase === "suggestion") {
+    if (!pollService.tryClaimSuggestionPhaseClose(poll.id)) {
+      const fresh = pollService.getPollById(poll.id);
+      if (fresh && ["suggestion", "ready_for_voting"].includes(fresh.phase)) {
+        await deliverCreatorSuggestionSetup({ client: app.client, poll: fresh });
+      }
+      return;
+    }
+  }
+
+  await deliverCreatorSuggestionSetup({ client: app.client, poll });
+  if (poll.phase === "suggestion") {
+    pollService.markSuggestionClosed(poll.id);
+  }
+}
+
+async function notifySuggestionPhaseEnded({ app, poll }) {
+  await deliverCreatorSuggestionSetup({ client: app.client, poll });
 }
 
 async function notifyPollClosedInsufficientSuggestions({ app, poll, count }) {
@@ -459,4 +580,6 @@ module.exports = {
   registerCommands,
   notifySuggestionPhaseEnded,
   notifyPollClosedInsufficientSuggestions,
+  deliverCreatorSuggestionSetup,
+  closeSuggestionPhaseAndNotify,
 };

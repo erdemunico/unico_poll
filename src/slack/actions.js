@@ -503,16 +503,50 @@ function registerActions(app) {
   app.action("open_start_voting_modal", async ({ ack, body, client }) => {
     await ack();
     const pollId = body.actions?.[0]?.value;
+    store.reloadStoreFromDisk();
     const poll = pollService.getPollById(pollId);
-    if (!poll || !pollService.pollManagedByAnyOf(poll, collectCreatorCandidateIds(body))) {
+    const channelId = body.channel?.id || poll?.channel_id;
+    const uid = body.user?.id;
+    if (!poll) {
+      if (channelId && uid) {
+        await safePostEphemeral(client, {
+          channelId,
+          user: uid,
+          text: "Bu anket kaydi bulunamadi. Yeni anket ac: `/unico-poll Baslik | 48h`",
+        });
+      }
+      return;
+    }
+    if (!pollService.pollManagedByAnyOf(poll, collectCreatorCandidateIds(body))) {
+      await safePostEphemeral(client, {
+        channelId,
+        user: uid,
+        text: "Oylama listesini yalnizca anketi baslatan kullanici secebilir.",
+      });
+      return;
+    }
+    if (!["suggestion", "ready_for_voting"].includes(poll.phase)) {
+      await safePostEphemeral(client, {
+        channelId,
+        user: uid,
+        text: "Bu anket artik oylama listesi secimi icin uygun degil.",
+      });
       return;
     }
     const suggestions = pollService.listSuggestions(pollId);
-
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: buildStartVotingModal({ poll, suggestions }),
-    });
+    try {
+      await client.views.open({
+        trigger_id: body.trigger_id,
+        view: buildStartVotingModal({ poll, suggestions }),
+      });
+    } catch (err) {
+      logger.error("open_start_voting_modal failed", { pollId, error: err.message });
+      await safePostEphemeral(client, {
+        channelId,
+        user: uid,
+        text: "Modal acilamadi. Dugmeye tekrar bas veya kanalda `/unico-poll` yazarak ekrani yeniden iste.",
+      });
+    }
   });
 
   app.action(/^slot_mode_\d+_select$/, async ({ ack, body, client }) => {
