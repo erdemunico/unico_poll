@@ -14,6 +14,7 @@ Kanalda yazilir; **o kanalda** anket acar veya kapatir. Ayni kanalda ayni anda t
 | `/unico-poll Baslik` | Baslik *Baslik* olan oneri toplama anketi. Sure varsayilan. |
 | `/unico-poll Baslik \| 48h` | Baslik *Baslik*, oneri suresi **48 saat** (`1h` … `336h` araligi; `48 hours` gibi yazim da sayilir). |
 | `/unico-poll Baslik \| direkt` veya `\| onersiz` / `\| kanalsiz` / `\| no-suggestions` | Kanalda **oneri toplamaz**. Yonetici once **komut cevabinda** (yalnizca kendine gorunen) *Secenekleri gir* ile modal acar; istenirse ayrica bota **DM** ile ayni dugme gider. DM mumkun degilse kanalda yalnizca olusturucuyu etiketleyen yedek mesajda dugme olur. **Oylama** ancak secenekler kaydedilince kanala duser. Istege bagli sure: or. `\| 24h direkt`. |
+| `/unico-poll durum` veya `status` | Bu kanalda aktif anket var mı gösterir (baslik, faz, oneri sayisi). Yeni anket **acmaz**. |
 | `/unico-poll iptal` veya `/unico-poll cancel` | Bu kanaldaki **aktif anketi** kapatir. **Yalnizca anketi baslatan** kullanici yapabilir. |
 
 **Baslik kurali:** `|` (pipe) **oncesi** metin anket basligidir. Ornek: `/unico-poll Yaz Turnuvasi \| 48h` → baslik *Yaz Turnuvasi*.
