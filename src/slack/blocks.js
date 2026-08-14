@@ -812,6 +812,7 @@ module.exports = {
   buildVotePrivacyWizardModal,
   buildVoteDurationWizardModal,
   creatorSuggestionControlBlocks,
+  buildStartVotingModal,
   votingBlocks,
   votingClosedBlocks,
   buildClassicVoteModal,
